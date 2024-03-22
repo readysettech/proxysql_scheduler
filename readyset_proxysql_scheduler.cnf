@@ -1,0 +1,12 @@
+proxysql_user = 'admin'
+proxysql_password = 'admin'
+proxysql_host = '127.0.0.1'
+proxysql_port = 6032
+readyset_user = 'root'
+readyset_password = 'root'
+readyset_host = '127.0.0.1'
+readyset_port = 3307
+source_hostgroup = 11
+readyset_hostgroup = 12
+warmup_time = 60
+lock_file = '/work/readyset_proxysql_scheduler/readyset_scheduler.lock'

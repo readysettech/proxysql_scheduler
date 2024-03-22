@@ -1,0 +1,33 @@
+[package]
+name = "readyset_proxysql_scheduler"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = { version = "*", features = ["derive"] }
+mysql = "*"
+toml = "0.8.12"
+serde = "1.0"
+chrono = "0.4.35"
+file-guard = "0.2.0"
+
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/readyset_proxysql_scheduler", dest = "/usr/bin/readyset_proxysql_scheduler", mode = "755" },
+    { source = "./readyset_proxysql_scheduler.cnf", dest = "/etc/readyset_proxysql_scheduler.cnf", mode = "644" },
+]
+license = "Apache 2.0"
+description = "Readyset ProxySQL Scheduler"
+
+[package.metadata.deb]
+extended-description = """\
+Readyset ProxySQL Scheduler"""
+copyright = "2023, ReadySet, Inc."
+maintainer = "ReadySet, Inc. <info@readyset.io>"
+assets = [
+    ["target/release/readyset_proxysql_scheduler", "/usr/bin/readyset_proxysql_scheduler", "755"],
+    ["./readyset_proxysql_scheduler.cnf", "/etc/readyset_proxysql_scheduler.cnf", "644"],
+]
