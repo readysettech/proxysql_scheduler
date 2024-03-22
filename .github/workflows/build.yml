@@ -17,6 +17,9 @@ jobs:
   
     - name: Install cargo-generate-rpm
       run: cargo install cargo-generate-rpm
+
+    - name: Install cargo-deb
+      run: cargo install cargo-deb
   
     - name: Build
       run: cargo build --release
@@ -24,14 +27,23 @@ jobs:
     - name: Generate RPM
       run: cargo generate-rpm
 
-    - name: Save RPM name
+    - name: Generate DEB
+      run: cargo deb
+
+    - name: Save RPM / DEB name
       run: |
         echo "rpm_name=$(ls target/generate-rpm/)" >> "$GITHUB_ENV"
+        echo "deb_name=$(ls target/debian/)" >> "$GITHUB_ENV"
 
-    - name: Upload
+    - name: Upload RPM
       uses: actions/upload-artifact@v4
       with:
         path: target/generate-rpm/
         name: ${{ env.rpm_name }}
 
+    - name: Upload Deb
+      uses: actions/upload-artifact@v4
+      with:
+        path: target/debian/
+        name: ${{ env.deb_name }}
   
