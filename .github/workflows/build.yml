@@ -33,7 +33,7 @@ jobs:
     - name: Save RPM / DEB name
       run: |
         echo "rpm_name=$(ls target/generate-rpm/)" >> "$GITHUB_ENV"
-        echo "deb_name=$(ls target/debian/)" >> "$GITHUB_ENV"
+        echo "deb_name=$(ls target/debian/ -I *-stripped)" >> "$GITHUB_ENV"
 
     - name: Upload RPM
       uses: actions/upload-artifact@v4
