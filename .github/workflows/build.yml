@@ -1,7 +1,6 @@
 name: Build
 
-# Let it run on all for now
-# on: [push, pull_request]
+on: [push, pull_request]
 
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
@@ -9,23 +8,22 @@ env:
 
 jobs:
   build:
-      runs-on: ubuntu-latest
-
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-
+  
     - name: Install pre-requirements
       run: sudo curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -q -y
-
+  
     - name: Install cargo-generate-rpm
       run: cargo install cargo-generate-rpm
-
+  
     - name: Build
       run: cargo build --release
-
+  
     - name: Generate RPM
       run: cargo generate-rpm
-
+  
     - name: Upload
       uses: actions/upload-artifact@v4
       with:
