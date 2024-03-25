@@ -9,4 +9,4 @@ readyset_port = 3307
 source_hostgroup = 11
 readyset_hostgroup = 12
 warmup_time = 20
-lock_file = '/etc/readyset_scheduler.lock'
+lock_file = '/tmp/readyset_scheduler.lock'

@@ -1,6 +1,6 @@
 mod config;
-mod queries;
 mod messages;
+mod queries;
 
 use clap::Parser;
 use config::read_config_file;
@@ -25,21 +25,36 @@ fn main() {
     let args = Args::parse();
     let config_file = read_config_file(&args.config).expect("Failed to read config file");
     let config = config::parse_config_file(&config_file).expect("Failed to parse config file");
-    let file = OpenOptions::new()
-    .read(true)
-    .write(true)
-    .create(true)
-    .open(config.clone().lock_file.unwrap_or("/tmp/readyset_scheduler.lock".to_string()))
-    .unwrap();
+    let file = match OpenOptions::new().read(true).write(true).create(true).open(
+        config
+            .clone()
+            .lock_file
+            .unwrap_or("/tmp/readyset_scheduler.lock".to_string()),
+    ) {
+        Ok(file) => file,
+        Err(err) => {
+            messages::print_error(
+                format!(
+                    "Failed to open lock file {}: {}",
+                    config
+                        .lock_file
+                        .unwrap_or("/tmp/readyset_scheduler.lock".to_string()),
+                    err
+                )
+                .as_str(),
+            );
+            std::process::exit(1);
+        }
+    };
 
-    let _guard = match file_guard::try_lock(&file, Lock::Exclusive, 0, 1){
+    let _guard = match file_guard::try_lock(&file, Lock::Exclusive, 0, 1) {
         Ok(guard) => guard,
         Err(err) => {
             messages::print_error(format!("Failed to acquire lock: {}", err).as_str());
             std::process::exit(1);
-        }        
+        }
     };
-    
+
     let proxysql_pool = Pool::new(
         OptsBuilder::new()
             .ip_or_hostname(Some(config.proxysql_host.as_str()))
@@ -72,20 +87,26 @@ fn main() {
     .unwrap();
     let mut readyset_conn = readyset_pool.get_conn().unwrap();
 
-    let mut queries_added_or_change = queries::adjust_mirror_rules(&mut proxysql_conn, &config).unwrap();
+    let mut queries_added_or_change =
+        queries::adjust_mirror_rules(&mut proxysql_conn, &config).unwrap();
 
+    let rows: Vec<(String, String, String)> =
+        queries::find_queries_to_cache(&mut proxysql_conn, &config);
 
-    let rows: Vec<(String, String)> = queries::find_queries_to_cache(&mut proxysql_conn);
-
-    for (digest_text, digest) in rows {
+    for (digest_text, digest, schema) in rows {
         messages::print_info(format!("Going to test query support for {}", digest_text).as_str());
-        let supported = queries::check_readyset_query_support(&mut readyset_conn, &digest_text);
+        let supported =
+            queries::check_readyset_query_support(&mut readyset_conn, &digest_text, &schema);
         match supported {
             Ok(true) => {
-                messages::print_info(format!("Query is supported, adding it to proxysql and readyset").as_str());
+                messages::print_info(
+                    format!("Query is supported, adding it to proxysql and readyset").as_str(),
+                );
                 queries_added_or_change = true;
-                queries::cache_query(&mut readyset_conn, &digest_text).expect("Failed to create readyset cache");      
-                queries::add_query_rule(&mut proxysql_conn, &digest, &config).expect("Failed to add query rule");          
+                queries::cache_query(&mut readyset_conn, &digest_text)
+                    .expect("Failed to create readyset cache");
+                queries::add_query_rule(&mut proxysql_conn, &digest, &config)
+                    .expect("Failed to add query rule");
             }
             Ok(false) => {
                 messages::print_info("Query is not supported");

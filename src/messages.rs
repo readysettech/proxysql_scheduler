@@ -13,8 +13,13 @@ fn print_message_with_ts(message: &str, message_type: MessageType) {
     let pid = process::id();
     match message_type {
         MessageType::Info => println!("{} [INFO] Readyset[{}]: {}", date_formatted, pid, message),
-        MessageType::Warning => println!("{} [WARNING] Readyset[{}]: {}", date_formatted, pid, message),
-        MessageType::Error => eprintln!("{} [ERROR] Readyset[{}]: {}", date_formatted, pid, message),
+        MessageType::Warning => println!(
+            "{} [WARNING] Readyset[{}]: {}",
+            date_formatted, pid, message
+        ),
+        MessageType::Error => {
+            eprintln!("{} [ERROR] Readyset[{}]: {}", date_formatted, pid, message)
+        }
     }
 }
 
