@@ -1,5 +1,5 @@
-# proxysql_scheduler
-Scheduler to integrate ProxySQL and Readyset
+# Readyset ProxySQL Scheduler
+Scheduler to integrate Readyset and ProxySQL. 
 
 # Workflow
 This scheduler executes the following steps:
@@ -42,9 +42,9 @@ Configure `/etc/readyset_proxysql_scheduler.cnf` as follow:
 * `readyset_port` - (Required) - Readyset port
 * `source_hostgroup` - (Required) - Hostgroup running your Read workload
 * `readyset_hostgroup` - (Required) - Hostgroup where Readyset is configure
-* `warmup_time` - (Optinal) - Time in seconds to mirror a query supported before redirecting the query to Readyset (Default 0 - no mirror)
-* `lock_file` - (Optinal) - Lock file to prevent two instances of the scheduler to run at the same time (Default '/etc/readyset_scheduler.lock')
+* `warmup_time` - (Optional) - Time in seconds to mirror a query supported before redirecting the query to Readyset (Default 0 - no mirror)
+* `lock_file` - (Optional) - Lock file to prevent two instances of the scheduler to run at the same time (Default '/etc/readyset_scheduler.lock')
 
 
 # Note
-Readyset support of MySQL and this scheduler are alpha quality, meaning the are not currently part of our test cycle. Run your own testing before pluging this to your production system.
+Readyset support of MySQL and this scheduler are alpha quality, meaning they are not currently part of our test cycle. Run your own testing before plugging this to your production system.
