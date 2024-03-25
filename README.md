@@ -43,6 +43,8 @@ Configure `/etc/readyset_proxysql_scheduler.cnf` as follow:
 * `source_hostgroup` - (Required) - Hostgroup running your Read workload
 * `readyset_hostgroup` - (Required) - Hostgroup where Readyset is configure
 * `warmup_time` - (Optinal) - Time in seconds to mirror a query supported before redirecting the query to Readyset (Default 0 - no mirror)
-* `lock_file` - (Optinal) - Lock file to prevent two instances of the scheduler to run at the same time (Default '/work/readyset_proxysql_scheduler/readyset_scheduler.lock')
+* `lock_file` - (Optinal) - Lock file to prevent two instances of the scheduler to run at the same time (Default '/etc/readyset_scheduler.lock')
 
 
+# Note
+Readyset support of MySQL and this scheduler are alpha quality, meaning the are not currently part of our test cycle. Run your own testing before pluging this to your production system.
