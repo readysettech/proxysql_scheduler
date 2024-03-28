@@ -18,11 +18,19 @@ pub fn find_queries_to_cache(
             AND s.schemaname NOT IN ('sys', 'information_schema', 'performance_schema', 'mysql')
             AND s.digest_text LIKE 'SELECT%FROM%'
             AND digest_text NOT LIKE '%?=?%'
-            AND q.rule_id IS NULL",
+            AND s.sum_rows_sent > 0
+            AND q.rule_id IS NULL
+            ORDER BY s.sum_rows_sent DESC",
             config.source_hostgroup, config.readyset_user
         ))
         .expect("Failed to query proxysql_conn");
     rows
+}
+
+pub fn replace_placeholders(query: &String) -> String {
+    // date placeholder
+    let query = query.replace("?-?-?", "?");
+    query
 }
 
 pub fn check_readyset_query_support(

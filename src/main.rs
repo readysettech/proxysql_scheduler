@@ -94,6 +94,7 @@ fn main() {
         queries::find_queries_to_cache(&mut proxysql_conn, &config);
 
     for (digest_text, digest, schema) in rows {
+        let digest_text = queries::replace_placeholders(&digest_text);
         messages::print_info(format!("Going to test query support for {}", digest_text).as_str());
         let supported =
             queries::check_readyset_query_support(&mut readyset_conn, &digest_text, &schema);
