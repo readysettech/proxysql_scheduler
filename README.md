@@ -5,10 +5,11 @@ Scheduler to integrate Readyset and ProxySQL.
 This scheduler executes the following steps:
 
 1. Locks an in disk file (configured by `lock_file`) to avoid multiple instances of the scheduler to overlap their execution.
+2. Check if it can connect to Readyset and validate if `Snapshot Status` is `Completed`. In case it cannot connect or Readyset is still performing snapshot it adjust the server status to `SHUNNED` in ProxySQL.
 2. Queries the table `stats_mysql_query_digest` from ProxySQL and validates if each query is supported by Readyset
 3. If the query is supported it adds a cache in Readyset by executing `CREATE CACHE FROM __query__`.
 4. If `warmup_time` is NOT configure, a new query rule will be added redirecting this query to Readyset
-5. If `warmup_time` is configured, a new query rule will be added to mirror this query to readyset. The query will still be redirected to the original hostgroup
+5. If `warmup_time` is configured, a new query rule will be added to mirror this query to Readyset. The query will still be redirected to the original hostgroup
 6. Once `warmup_time` seconds has elapsed since the query was mirrored, the query rule will be updated to redirect the qury to Readyset instead of mirroring.
 
 
