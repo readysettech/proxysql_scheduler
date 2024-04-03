@@ -1,6 +1,7 @@
 mod config;
 mod messages;
 mod queries;
+mod server;
 
 use clap::Parser;
 use config::read_config_file;
@@ -8,6 +9,7 @@ use mysql::OptsBuilder;
 use mysql::{Pool, PoolConstraints, PoolOpts};
 
 use file_guard::Lock;
+use server::ServerStatus;
 use std::fs::OpenOptions;
 
 /// Readyset ProxySQL Scheduler
@@ -71,7 +73,7 @@ fn main() {
     .unwrap();
     let mut proxysql_conn = proxysql_pool.get_conn().unwrap();
 
-    let readyset_pool = Pool::new(
+    let readyset_pool = match Pool::new(
         OptsBuilder::new()
             .ip_or_hostname(Some(config.readyset_host.as_str()))
             .tcp_port(config.readyset_port)
@@ -83,9 +85,39 @@ fn main() {
                     .with_reset_connection(false)
                     .with_constraints(PoolConstraints::new(1, 1).unwrap()),
             ),
-    )
-    .unwrap();
+    ) {
+        Ok(conn) => conn,
+        Err(e) => {
+            messages::print_error(format!("Cannot connect to Readyset: {}.", e).as_str());
+            let _ =
+                server::change_server_status(&mut proxysql_conn, &config, ServerStatus::Shunned);
+            std::process::exit(1);
+        }
+    };
     let mut readyset_conn = readyset_pool.get_conn().unwrap();
+
+    match server::check_readyset_is_ready(&mut readyset_conn) {
+        Ok(ready) => {
+            if ready {
+                let _ =
+                    server::change_server_status(&mut proxysql_conn, &config, ServerStatus::Online);
+            } else {
+                messages::print_info("Readyset is still running Snapshot.");
+                let _ = server::change_server_status(
+                    &mut proxysql_conn,
+                    &config,
+                    ServerStatus::Shunned,
+                );
+                std::process::exit(0);
+            }
+        }
+        Err(e) => {
+            messages::print_error(format!("Cannot check Readyset status: {}.", e).as_str());
+            let _ =
+                server::change_server_status(&mut proxysql_conn, &config, ServerStatus::Shunned);
+            std::process::exit(1);
+        }
+    };
 
     let mut queries_added_or_change =
         queries::adjust_mirror_rules(&mut proxysql_conn, &config).unwrap();
