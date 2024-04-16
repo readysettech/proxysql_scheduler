@@ -27,10 +27,10 @@ pub fn find_queries_to_cache(
     rows
 }
 
-pub fn replace_placeholders(query: &String) -> String {
+pub fn replace_placeholders(query: &str) -> String {
     // date placeholder
-    let query = query.replace("?-?-?", "?");
-    query
+
+    query.replace("?-?-?", "?")
 }
 
 pub fn check_readyset_query_support(

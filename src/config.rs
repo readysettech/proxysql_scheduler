@@ -18,7 +18,7 @@ pub struct Config {
 
 pub fn read_config_file(path: &str) -> Result<String, std::io::Error> {
     let mut file =
-        File::open(path).expect(format!("Failed to open config file at path {}", path).as_str());
+        File::open(path).unwrap_or_else(|_| panic!("Failed to open config file at path {}", path));
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
     Ok(contents)

@@ -27,12 +27,17 @@ fn main() {
     let args = Args::parse();
     let config_file = read_config_file(&args.config).expect("Failed to read config file");
     let config = config::parse_config_file(&config_file).expect("Failed to parse config file");
-    let file = match OpenOptions::new().read(true).write(true).create(true).open(
-        config
-            .clone()
-            .lock_file
-            .unwrap_or("/tmp/readyset_scheduler.lock".to_string()),
-    ) {
+    let file = match OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(
+            config
+                .clone()
+                .lock_file
+                .unwrap_or("/tmp/readyset_scheduler.lock".to_string()),
+        ) {
         Ok(file) => file,
         Err(err) => {
             messages::print_error(
@@ -133,7 +138,9 @@ fn main() {
         match supported {
             Ok(true) => {
                 messages::print_info(
-                    format!("Query is supported, adding it to proxysql and readyset").as_str(),
+                    "Query is supported, adding it to proxysql and readyset"
+                        .to_string()
+                        .as_str(),
                 );
                 queries_added_or_change = true;
                 queries::cache_query(&mut readyset_conn, &digest_text)

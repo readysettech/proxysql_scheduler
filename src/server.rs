@@ -55,14 +55,13 @@ pub fn change_server_status(
                 config.readyset_host,
                 config.readyset_port,
                 status.unwrap(),
-                server_status.to_string()
+                server_status
             )
             .as_str(),
         );
         ps_conn.query_drop(format!(
             "UPDATE mysql_servers SET status = '{}' {}",
-            server_status.to_string(),
-            where_clause
+            server_status, where_clause
         ))?;
         ps_conn.query_drop("LOAD MYSQL SERVERS TO RUNTIME")?;
         ps_conn.query_drop("SAVE MYSQL SERVERS TO DISK")?;
