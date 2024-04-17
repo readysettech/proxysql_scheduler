@@ -13,6 +13,9 @@ jobs:
     
     - name: Check format
       run: cargo fmt --check 
+
+    - name: Run clippy
+      run: cargo clippy --workspace --all-targets --all-features -- -W clippy::disallowed_methods -D warnings
   
     - name: Install cargo-generate-rpm
       run: cargo install cargo-generate-rpm
