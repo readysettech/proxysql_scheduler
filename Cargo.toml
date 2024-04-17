@@ -25,7 +25,7 @@ description = "Readyset ProxySQL Scheduler"
 [package.metadata.deb]
 extended-description = """\
 Readyset ProxySQL Scheduler"""
-copyright = "2023, ReadySet, Inc."
+copyright = "2024, ReadySet, Inc."
 maintainer = "ReadySet, Inc. <info@readyset.io>"
 assets = [
     ["target/release/readyset_proxysql_scheduler", "/usr/bin/readyset_proxysql_scheduler", "755"],
