@@ -1,4 +1,5 @@
 mod config;
+mod health_check;
 mod messages;
 mod queries;
 mod server;
@@ -9,6 +10,7 @@ use mysql::OptsBuilder;
 use mysql::{Pool, PoolConstraints, PoolOpts};
 
 use file_guard::Lock;
+use queries::query_discovery;
 use server::ServerStatus;
 use std::fs::OpenOptions;
 
@@ -101,64 +103,22 @@ fn main() {
     };
     let mut readyset_conn = readyset_pool.get_conn().unwrap();
 
-    match server::check_readyset_is_ready(&mut readyset_conn) {
-        Ok(ready) => {
-            if ready {
-                let _ =
-                    server::change_server_status(&mut proxysql_conn, &config, ServerStatus::Online);
-            } else {
-                messages::print_info("Readyset is still running Snapshot.");
-                let _ = server::change_server_status(
-                    &mut proxysql_conn,
-                    &config,
-                    ServerStatus::Shunned,
-                );
-                std::process::exit(0);
-            }
-        }
-        Err(e) => {
-            messages::print_error(format!("Cannot check Readyset status: {}.", e).as_str());
-            let _ =
-                server::change_server_status(&mut proxysql_conn, &config, ServerStatus::Shunned);
-            std::process::exit(1);
-        }
+    let running_mode = match config.operation_mode {
+        Some(mode) => mode,
+        None => config::OperationMode::All,
     };
 
-    let mut queries_added_or_change =
-        queries::adjust_mirror_rules(&mut proxysql_conn, &config).unwrap();
-
-    let rows: Vec<(String, String, String)> =
-        queries::find_queries_to_cache(&mut proxysql_conn, &config);
-
-    for (digest_text, digest, schema) in rows {
-        let digest_text = queries::replace_placeholders(&digest_text);
-        messages::print_info(format!("Going to test query support for {}", digest_text).as_str());
-        let supported =
-            queries::check_readyset_query_support(&mut readyset_conn, &digest_text, &schema);
-        match supported {
-            Ok(true) => {
-                messages::print_info(
-                    "Query is supported, adding it to proxysql and readyset"
-                        .to_string()
-                        .as_str(),
-                );
-                queries_added_or_change = true;
-                queries::cache_query(&mut readyset_conn, &digest_text)
-                    .expect("Failed to create readyset cache");
-                queries::add_query_rule(&mut proxysql_conn, &digest, &config)
-                    .expect("Failed to add query rule");
-            }
-            Ok(false) => {
-                messages::print_info("Query is not supported");
-            }
-            Err(err) => {
-                messages::print_warning(format!("Failed to check query support: {}", err).as_str());
-            }
-        }
+    if running_mode == config::OperationMode::HealthCheck
+        || running_mode == config::OperationMode::All
+    {
+        health_check::health_check(&mut proxysql_conn, &config, &mut readyset_conn)
     }
-    if queries_added_or_change {
-        queries::load_query_rules(&mut proxysql_conn).expect("Failed to load query rules");
-        queries::save_query_rules(&mut proxysql_conn).expect("Failed to save query rules");
+
+    if running_mode == config::OperationMode::QueryDiscovery
+        || running_mode == config::OperationMode::All
+    {
+        query_discovery(&mut proxysql_conn, &config, &mut readyset_conn);
     }
+
     messages::print_info("Finished readyset_scheduler");
 }

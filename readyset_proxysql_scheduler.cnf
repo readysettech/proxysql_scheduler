@@ -10,3 +10,4 @@ source_hostgroup = 11
 readyset_hostgroup = 99
 warmup_time = 60
 lock_file = '/tmp/readyset_scheduler.lock'
+operation_mode=all
