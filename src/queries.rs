@@ -1,7 +1,10 @@
 use chrono::{DateTime, Local};
 use mysql::{prelude::Queryable, PooledConn};
 
-use crate::{config::Config, messages};
+use crate::{
+    config::{self, Config},
+    messages,
+};
 
 pub fn find_queries_to_cache(
     conn: &mut PooledConn,
@@ -116,4 +119,42 @@ pub fn adjust_mirror_rules(conn: &mut PooledConn, config: &Config) -> Result<boo
         }
     }
     Ok(updated_rules)
+}
+
+pub fn query_discovery(
+    proxysql_conn: &mut mysql::PooledConn,
+    config: &config::Config,
+    readyset_conn: &mut mysql::PooledConn,
+) {
+    let mut queries_added_or_change = adjust_mirror_rules(proxysql_conn, config).unwrap();
+
+    let rows: Vec<(String, String, String)> = find_queries_to_cache(proxysql_conn, config);
+
+    for (digest_text, digest, schema) in rows {
+        let digest_text = replace_placeholders(&digest_text);
+        messages::print_info(format!("Going to test query support for {}", digest_text).as_str());
+        let supported = check_readyset_query_support(readyset_conn, &digest_text, &schema);
+        match supported {
+            Ok(true) => {
+                messages::print_info(
+                    "Query is supported, adding it to proxysql and readyset"
+                        .to_string()
+                        .as_str(),
+                );
+                queries_added_or_change = true;
+                cache_query(readyset_conn, &digest_text).expect("Failed to create readyset cache");
+                add_query_rule(proxysql_conn, &digest, config).expect("Failed to add query rule");
+            }
+            Ok(false) => {
+                messages::print_info("Query is not supported");
+            }
+            Err(err) => {
+                messages::print_warning(format!("Failed to check query support: {}", err).as_str());
+            }
+        }
+    }
+    if queries_added_or_change {
+        load_query_rules(proxysql_conn).expect("Failed to load query rules");
+        save_query_rules(proxysql_conn).expect("Failed to save query rules");
+    }
 }
