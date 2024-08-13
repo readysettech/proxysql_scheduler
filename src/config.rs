@@ -48,6 +48,7 @@ pub struct Config {
     pub warmup_time: Option<u16>,
     pub lock_file: Option<String>,
     pub operation_mode: Option<OperationMode>,
+    pub number_of_queries: u16,
 }
 
 pub fn read_config_file(path: &str) -> Result<String, std::io::Error> {
