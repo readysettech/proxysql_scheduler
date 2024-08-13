@@ -82,8 +82,12 @@ pub fn check_readyset_query_support(
     }
 }
 
-pub fn cache_query(conn: &mut PooledConn, digest_text: &String) -> Result<bool, mysql::Error> {
-    conn.query_drop(format!("CREATE CACHE FROM {}", digest_text))
+pub fn cache_query(
+    conn: &mut PooledConn,
+    digest_text: &String,
+    digest: &String,
+) -> Result<bool, mysql::Error> {
+    conn.query_drop(format!("CREATE CACHE d_{} FROM {}", digest, digest_text))
         .expect("Failed to create readyset cache");
     Ok(true)
 }
@@ -177,7 +181,8 @@ pub fn query_discovery(
                         .as_str(),
                 );
                 queries_added_or_change = true;
-                cache_query(readyset_conn, &digest_text).expect("Failed to create readyset cache");
+                cache_query(readyset_conn, &digest_text, &digest)
+                    .expect("Failed to create readyset cache");
                 add_query_rule(proxysql_conn, &digest, config).expect("Failed to add query rule");
                 current_queries_digest.push(digest);
             }
