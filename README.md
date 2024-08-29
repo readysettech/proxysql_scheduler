@@ -1,5 +1,6 @@
-# Readyset ProxySQL Scheduler
-Scheduler to integrate Readyset and ProxySQL. 
+# Automatic Query Caching with Readyset ProxySQL Scheduler
+Unlock the full potential of your database integrating ReadySet and ProxySQL by automatically analyzing and caching inefficient queries in your workload. Experience optimized performance with zero code changes—your application runs faster, effortlessly.
+
 
 # Workflow
 This scheduler executes the following steps:
