@@ -1,17 +1,16 @@
 mod config;
 mod health_check;
+mod hosts;
 mod messages;
 mod queries;
-mod server;
 
 use clap::Parser;
 use config::read_config_file;
-use mysql::OptsBuilder;
-use mysql::{Pool, PoolConstraints, PoolOpts};
+use hosts::Hosts;
+use mysql::{Conn, OptsBuilder};
 
 use file_guard::Lock;
 use queries::query_discovery;
-use server::ServerStatus;
 use std::fs::OpenOptions;
 
 /// Readyset ProxySQL Scheduler
@@ -63,61 +62,37 @@ fn main() {
             std::process::exit(1);
         }
     };
-
-    let proxysql_pool = Pool::new(
+    let mut proxysql_conn = Conn::new(
         OptsBuilder::new()
             .ip_or_hostname(Some(config.proxysql_host.as_str()))
             .tcp_port(config.proxysql_port)
             .user(Some(config.proxysql_user.as_str()))
             .pass(Some(config.proxysql_password.as_str()))
-            .prefer_socket(false)
-            .pool_opts(
-                PoolOpts::default()
-                    .with_reset_connection(false)
-                    .with_constraints(PoolConstraints::new(1, 1).unwrap()),
-            ),
+            .prefer_socket(false),
     )
     .unwrap();
-    let mut proxysql_conn = proxysql_pool.get_conn().unwrap();
-
-    let readyset_pool = match Pool::new(
-        OptsBuilder::new()
-            .ip_or_hostname(Some(config.readyset_host.as_str()))
-            .tcp_port(config.readyset_port)
-            .user(Some(config.readyset_user.as_str()))
-            .pass(Some(config.readyset_password.as_str()))
-            .prefer_socket(false)
-            .pool_opts(
-                PoolOpts::default()
-                    .with_reset_connection(false)
-                    .with_constraints(PoolConstraints::new(1, 1).unwrap()),
-            ),
-    ) {
-        Ok(conn) => conn,
-        Err(e) => {
-            messages::print_error(format!("Cannot connect to Readyset: {}.", e).as_str());
-            let _ =
-                server::change_server_status(&mut proxysql_conn, &config, ServerStatus::Shunned);
-            std::process::exit(1);
-        }
-    };
-    let mut readyset_conn = readyset_pool.get_conn().unwrap();
 
     let running_mode = match config.operation_mode {
         Some(mode) => mode,
         None => config::OperationMode::All,
     };
 
+    let mut hosts = Hosts::new(&mut proxysql_conn, &config);
+
     if running_mode == config::OperationMode::HealthCheck
         || running_mode == config::OperationMode::All
     {
-        health_check::health_check(&mut proxysql_conn, &config, &mut readyset_conn)
+        hosts.iter_mut().for_each(|host| {
+            health_check::health_check(&mut proxysql_conn, &config, host);
+        });
     }
 
+    // retain only healthy hosts
+    hosts.retain_online();
     if running_mode == config::OperationMode::QueryDiscovery
         || running_mode == config::OperationMode::All
     {
-        query_discovery(&mut proxysql_conn, &config, &mut readyset_conn);
+        query_discovery(&mut proxysql_conn, &config, &mut hosts);
     }
 
     messages::print_info("Finished readyset_scheduler");

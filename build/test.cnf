@@ -1,11 +1,11 @@
-proxysql_user = 'admin'
-proxysql_password = 'admin'
+proxysql_user = 'radmin'
+proxysql_password = 'radmin'
 proxysql_host = '127.0.0.1'
 proxysql_port = 6032
 readyset_user = 'root'
-readyset_password = 'root'
-source_hostgroup = 11
-readyset_hostgroup = 99
+readyset_password = 'noria'
+source_hostgroup = 1
+readyset_hostgroup = 2
 warmup_time = 60
 lock_file = '/tmp/readyset_scheduler.lock'
 operation_mode="All"

@@ -41,8 +41,6 @@ pub struct Config {
     pub proxysql_port: u16,
     pub readyset_user: String,
     pub readyset_password: String,
-    pub readyset_host: String,
-    pub readyset_port: u16,
     pub source_hostgroup: u16,
     pub readyset_hostgroup: u16,
     pub warmup_time: Option<u16>,

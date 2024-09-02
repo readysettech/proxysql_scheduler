@@ -1,8 +1,9 @@
 use chrono::{DateTime, Local};
-use mysql::{prelude::Queryable, PooledConn};
+use mysql::{prelude::Queryable, Conn};
 
 use crate::{
     config::{self, Config},
+    hosts::Hosts,
     messages,
 };
 
@@ -12,15 +13,12 @@ const DESTINATION_QUERY_TOKEN: &str = "Added by readyset scheduler at";
 /// This function is used to find queries that are not cached in ReadySet and are not in the mysql_query_rules table.
 ///
 /// # Arguments
-/// * `conn` - A mutable reference to a pooled connection to ProxySQL.
+/// * `conn` - A reference to a connection to ProxySQL.
 /// * `config` - A reference to the configuration struct.
 ///
 /// # Returns
 /// A vector of tuples containing the digest_text, digest, and schema name of the queries that are not cached in ReadySet and are not in the mysql_query_rules table.
-pub fn find_queries_to_cache(
-    conn: &mut PooledConn,
-    config: &Config,
-) -> Vec<(String, String, String)> {
+pub fn find_queries_to_cache(conn: &mut Conn, config: &Config) -> Vec<(String, String, String)> {
     let rows: Vec<(String, String, String)> = conn
         .query(format!(
             "SELECT s.digest_text, s.digest, s.schemaname
@@ -47,11 +45,11 @@ pub fn find_queries_to_cache(
 /// This function is used to check the current list of queries routed to Readyset.
 ///
 /// # Arguments
-/// * `conn` - A mutable reference to a pooled connection to ProxySQL.
+/// * `conn` - A reference to a connection to ProxySQL.
 ///
 /// # Returns
 /// A vector of tuples containing the digest_text, digest, and schemaname of the queries that are currently routed to ReadySet.
-pub fn find_queries_routed_to_readyset(conn: &mut PooledConn) -> Vec<String> {
+pub fn find_queries_routed_to_readyset(conn: &mut Conn) -> Vec<String> {
     let rows: Vec<String> = conn
         .query(format!(
             "SELECT digest FROM mysql_query_rules WHERE comment LIKE '{}%' OR comment LIKE '{}%'",
@@ -67,33 +65,8 @@ pub fn replace_placeholders(query: &str) -> String {
     query.replace("?-?-?", "?")
 }
 
-pub fn check_readyset_query_support(
-    conn: &mut PooledConn,
-    digest_text: &String,
-    schema: &String,
-) -> Result<bool, mysql::Error> {
-    conn.query_drop(format!("USE {}", schema))
-        .expect("Failed to use schema");
-    let row: Option<(String, String, String)> =
-        conn.query_first(format!("EXPLAIN CREATE CACHE FROM {}", digest_text))?;
-    match row {
-        Some((_, _, value)) => Ok(value == "yes" || value == "cached"),
-        None => Ok(false),
-    }
-}
-
-pub fn cache_query(
-    conn: &mut PooledConn,
-    digest_text: &String,
-    digest: &String,
-) -> Result<bool, mysql::Error> {
-    conn.query_drop(format!("CREATE CACHE d_{} FROM {}", digest, digest_text))
-        .expect("Failed to create readyset cache");
-    Ok(true)
-}
-
 pub fn add_query_rule(
-    conn: &mut PooledConn,
+    conn: &mut Conn,
     digest: &String,
     config: &Config,
 ) -> Result<bool, mysql::Error> {
@@ -109,18 +82,18 @@ pub fn add_query_rule(
     Ok(true)
 }
 
-pub fn load_query_rules(conn: &mut PooledConn) -> Result<bool, mysql::Error> {
+pub fn load_query_rules(conn: &mut Conn) -> Result<bool, mysql::Error> {
     conn.query_drop("LOAD MYSQL QUERY RULES TO RUNTIME")
         .expect("Failed to load query rules");
     Ok(true)
 }
-pub fn save_query_rules(conn: &mut PooledConn) -> Result<bool, mysql::Error> {
+pub fn save_query_rules(conn: &mut Conn) -> Result<bool, mysql::Error> {
     conn.query_drop("SAVE MYSQL QUERY RULES TO DISK")
         .expect("Failed to load query rules");
     Ok(true)
 }
 
-pub fn adjust_mirror_rules(conn: &mut PooledConn, config: &Config) -> Result<bool, mysql::Error> {
+pub fn adjust_mirror_rules(conn: &mut Conn, config: &Config) -> Result<bool, mysql::Error> {
     let mut updated_rules = false;
     let datetime_now: DateTime<Local> = Local::now();
     let tz = datetime_now.format("%z").to_string();
@@ -156,11 +129,11 @@ pub fn adjust_mirror_rules(conn: &mut PooledConn, config: &Config) -> Result<boo
     Ok(updated_rules)
 }
 
-pub fn query_discovery(
-    proxysql_conn: &mut mysql::PooledConn,
-    config: &config::Config,
-    readyset_conn: &mut mysql::PooledConn,
-) {
+pub fn query_discovery(proxysql_conn: &mut Conn, config: &config::Config, hosts: &mut Hosts) {
+    if hosts.is_empty() {
+        return;
+    }
+
     let mut queries_added_or_change = adjust_mirror_rules(proxysql_conn, config).unwrap();
 
     let mut current_queries_digest: Vec<String> = find_queries_routed_to_readyset(proxysql_conn);
@@ -172,7 +145,10 @@ pub fn query_discovery(
         }
         let digest_text = replace_placeholders(&digest_text);
         messages::print_info(format!("Going to test query support for {}", digest_text).as_str());
-        let supported = check_readyset_query_support(readyset_conn, &digest_text, &schema);
+        let supported = hosts
+            .first_mut()
+            .unwrap()
+            .check_query_support(&digest_text, &schema); // Safe to unwrap because we checked if hosts is empty
         match supported {
             Ok(true) => {
                 messages::print_info(
@@ -181,8 +157,10 @@ pub fn query_discovery(
                         .as_str(),
                 );
                 queries_added_or_change = true;
-                cache_query(readyset_conn, &digest_text, &digest)
-                    .expect("Failed to create readyset cache");
+                hosts.iter_mut().for_each(|host| {
+                    host.cache_query(&digest_text, &digest)
+                        .expect("Failed to create readyset cache");
+                });
                 add_query_rule(proxysql_conn, &digest, config).expect("Failed to add query rule");
                 current_queries_digest.push(digest);
             }
