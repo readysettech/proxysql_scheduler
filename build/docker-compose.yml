@@ -1,0 +1,36 @@
+version: "3.8"
+services:
+  proxysql:
+    image: proxysql/proxysql
+    ports:
+      - "6033:6033"
+      - "6032:6032"
+    volumes:
+      - ./proxysql.cnf:/etc/proxysql.cnf
+  mysql-master:
+    image: mysql:8.0
+    container_name: mysql-master
+    environment:
+      - MYSQL_ROOT_PASSWORD=noria
+      - MYSQL_DATABASE=noria
+    command: --server-id=1 
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -u root -pnoria"]
+      interval: 10s
+      retries: 20
+      start_period: 30s
+      timeout: 10s
+  readyset:
+    image: readysettech/readyset
+    ports:
+      - "3307:3307"
+      - "6034:6034"
+    environment:
+      - UPSTREAM_DB_URL=mysql://root:noria@172.17.0.1:3306/noria
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+        restart: true
+
