@@ -1,4 +1,4 @@
-use crate::{config::Config, messages};
+use crate::{config::Config, queries::Query};
 use core::fmt;
 use mysql::{prelude::Queryable, Conn, OptsBuilder};
 
@@ -113,8 +113,17 @@ impl Host {
     /// # Returns
     ///
     /// The status of the host.
-    fn get_status(&self) -> HostStatus {
+    pub fn get_status(&self) -> HostStatus {
         self.status
+    }
+
+    /// Changes the status of the host.
+    ///
+    /// # Arguments
+    ///
+    /// * `status` - The new status of the host.
+    pub fn change_status(&mut self, status: HostStatus) {
+        self.status = status;
     }
 
     /// Checks if the host is online.
@@ -192,132 +201,18 @@ impl Host {
     /// # Returns
     ///
     /// true if the query was cached successfully, false otherwise.
-    pub fn cache_query(
-        &mut self,
-        digest_text: &String,
-        digest: &String,
-    ) -> Result<bool, mysql::Error> {
+    pub fn cache_query(&mut self, query: &Query) -> Result<bool, mysql::Error> {
         match &mut self.conn {
             None => return Ok(false),
             Some(conn) => {
-                conn.query_drop(format!("CREATE CACHE d_{} FROM {}", digest, digest_text))
-                    .expect("Failed to create readyset cache");
+                conn.query_drop(format!(
+                    "CREATE CACHE d_{} FROM {}",
+                    query.get_digest(),
+                    query.get_digest_text()
+                ))
+                .expect("Failed to create readyset cache");
             }
         }
         Ok(true)
-    }
-
-    /// Changes the status of the host in the ProxySQL mysql_servers table.
-    /// The status is set to the given `status`.
-    pub fn change_status(
-        &mut self,
-        ps_conn: &mut Conn,
-        config: &Config,
-        status: HostStatus,
-    ) -> Result<bool, mysql::Error> {
-        let where_clause = format!(
-            "WHERE hostgroup_id = {} AND hostname = '{}' AND port = {}",
-            config.readyset_hostgroup,
-            self.get_hostname(),
-            self.get_port()
-        );
-        if self.status != status {
-            messages::print_info(
-                format!(
-                    "Server HG: {}, Host: {}, Port: {} is currently {}. Changing to {}",
-                    config.readyset_hostgroup,
-                    self.get_hostname(),
-                    self.get_port(),
-                    self.get_status(),
-                    status
-                )
-                .as_str(),
-            );
-            self.status = status;
-            ps_conn.query_drop(format!(
-                "UPDATE mysql_servers SET status = '{}' {}",
-                self.get_status(),
-                where_clause
-            ))?;
-            ps_conn.query_drop("LOAD MYSQL SERVERS TO RUNTIME")?;
-            ps_conn.query_drop("SAVE MYSQL SERVERS TO DISK")?;
-        }
-
-        Ok(true)
-    }
-}
-
-/// Represents a list of Readyset hosts
-pub struct Hosts {
-    hosts: Vec<Host>,
-}
-
-impl From<Vec<Host>> for Hosts {
-    fn from(hosts: Vec<Host>) -> Self {
-        Hosts { hosts }
-    }
-}
-
-impl Hosts {
-    /// Fetches the hosts from the ProxySQL mysql_servers table.
-    ///
-    /// # Arguments
-    ///
-    /// * `proxysql_conn` - The connection to the ProxySQL instance.
-    /// * `config` - The configuration object.
-    ///
-    /// # Returns
-    ///
-    /// A vector of `Host` instances.
-    pub fn new<'a>(proxysql_conn: &'a mut Conn, config: &'a Config) -> Self {
-        let query = format!(
-            "SELECT hostname, port, status, comment FROM mysql_servers WHERE hostgroup_id = {}",
-            config.readyset_hostgroup
-        );
-        let results: Vec<(String, u16, String, String)> = proxysql_conn.query(query).unwrap();
-        results
-            .into_iter()
-            .filter_map(|(hostname, port, status, comment)| {
-                if comment.to_lowercase().contains("readyset") {
-                    Some(Host::new(hostname, port, status, config))
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<Host>>()
-            .into()
-    }
-
-    /// Gets a mutable iterator over the hosts.
-    ///
-    /// # Returns
-    ///
-    /// A mutable iterator over the hosts.
-    pub fn iter_mut(&mut self) -> core::slice::IterMut<Host> {
-        self.hosts.iter_mut()
-    }
-
-    /// Mutate self by retaining only the hosts that are online.
-    pub fn retain_online(&mut self) {
-        self.hosts.retain(|host| host.is_online());
-    }
-
-    /// Checks if the hosts list is empty.
-    ///
-    /// # Returns
-    ///
-    /// true if the hosts list is empty, false otherwise.
-    pub fn is_empty(&self) -> bool {
-        self.hosts.is_empty()
-    }
-
-    /// Gets a mutable reference for the first host in the list.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the first host in the list.
-    /// If the list is empty, the function returns None.
-    pub fn first_mut(&mut self) -> Option<&mut Host> {
-        self.hosts.first_mut()
     }
 }

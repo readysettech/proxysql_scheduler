@@ -1,16 +1,14 @@
 mod config;
-mod health_check;
 mod hosts;
 mod messages;
+mod proxysql;
 mod queries;
 
 use clap::Parser;
 use config::read_config_file;
-use hosts::Hosts;
-use mysql::{Conn, OptsBuilder};
-
 use file_guard::Lock;
-use queries::query_discovery;
+use mysql::{Conn, OptsBuilder};
+use proxysql::ProxySQL;
 use std::fs::OpenOptions;
 
 /// Readyset ProxySQL Scheduler
@@ -62,37 +60,36 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let mut proxysql_conn = Conn::new(
-        OptsBuilder::new()
-            .ip_or_hostname(Some(config.proxysql_host.as_str()))
-            .tcp_port(config.proxysql_port)
-            .user(Some(config.proxysql_user.as_str()))
-            .pass(Some(config.proxysql_password.as_str()))
-            .prefer_socket(false),
-    )
-    .unwrap();
+
+    let mut proxysql = ProxySQL::new(&config);
 
     let running_mode = match config.operation_mode {
         Some(mode) => mode,
         None => config::OperationMode::All,
     };
 
-    let mut hosts = Hosts::new(&mut proxysql_conn, &config);
-
     if running_mode == config::OperationMode::HealthCheck
         || running_mode == config::OperationMode::All
     {
-        hosts.iter_mut().for_each(|host| {
-            health_check::health_check(&mut proxysql_conn, &config, host);
-        });
+        proxysql.health_check();
     }
 
     // retain only healthy hosts
-    hosts.retain_online();
+    //hosts.retain_online();
     if running_mode == config::OperationMode::QueryDiscovery
         || running_mode == config::OperationMode::All
     {
-        query_discovery(&mut proxysql_conn, &config, &mut hosts);
+        let mut conn = Conn::new(
+            OptsBuilder::new()
+                .ip_or_hostname(Some(config.proxysql_host.as_str()))
+                .tcp_port(config.proxysql_port)
+                .user(Some(config.proxysql_user.as_str()))
+                .pass(Some(config.proxysql_password.clone().as_str()))
+                .prefer_socket(false),
+        )
+        .expect("Failed to create ProxySQL connection");
+        let mut query_discovery = queries::QueryDiscovery::new(config);
+        query_discovery.run(&mut proxysql, &mut conn);
     }
 
     messages::print_info("Finished readyset_scheduler");

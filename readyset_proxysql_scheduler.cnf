@@ -10,3 +10,4 @@ warmup_time = 60
 lock_file = '/tmp/readyset_scheduler.lock'
 operation_mode="All"
 number_of_queries=10
+query_discovery_mode='SumTime'
