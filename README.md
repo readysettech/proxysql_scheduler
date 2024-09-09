@@ -67,7 +67,7 @@ The Query Discovery Mode is a set of possible rules to discover queries to autom
 
 2. `SumTime` - Total Time Spent Executing the Query
  * Formula: `total_execution_time = sum_time`
- * Description: This metric represents the total cumulative time spent executing the query across all its executions. It provides a clear understanding of how much processing time the query is consuming over time. A high total execution time can indicate that the query is either frequently executed or is time-intensive to process.
+ * Description: This metric represents the total cumulative time spent (measured in microseconds) executing the query across all its executions. It provides a clear understanding of how much processing time the query is consuming over time. A high total execution time can indicate that the query is either frequently executed or is time-intensive to process.
 
 3. `SumRowsSent` - Total Number of Rows Sent by the Query (sum_rows_sent)
  * Formula: `total_rows_sent = sum_rows_sent`
@@ -75,27 +75,27 @@ The Query Discovery Mode is a set of possible rules to discover queries to autom
 
 4. `MeanTime` - Average Query Execution Time (Mean)
  * Formula: `mean_time = sum_time / count_star`
- * Description: The mean time gives you an idea of the typical performance of the query over all executions. It provides a central tendency of how long the query generally takes to execute.
+ * Description: The mean time gives you an idea of the typical performance (measured in microseconds) of the query over all executions. It provides a central tendency of how long the query generally takes to execute.
 
 5. `ExecutionTimeDistance` - Time Distance Between Query Executions
  * Formula: `execution_time_distance = max_time - min_time`
- * Description: This shows the spread between the fastest and slowest executions of the query. A large range might indicate variability in system load, input sizes, or external factors affecting performance.
+ * Description: This shows the spread between the fastest and slowest executions of the query (measured in microseconds). A large range might indicate variability in system load, input sizes, or external factors affecting performance.
 
 6. `QueryThroughput` - Query Throughput
  * Formula: `query_throughput = count_star / sum_time`
- * Description: This shows how many queries are processed per unit of time. It’s useful for understanding system capacity and how efficiently the database is handling the queries.
+ * Description: This shows how many queries are processed per unit of time (measured in microseconds). It’s useful for understanding system capacity and how efficiently the database is handling the queries.
 
 7. `WorstBestCase` - Worst Best-Case Query Performance
- * Formula: `worst_case = min_time`
- * Description: The min_time metric gives the fastest time the query was ever executed. It reflects the best-case performance scenario, which could indicate the query’s performance under optimal conditions.
+ * Formula: `worst_case = max(min_time)`
+ * Description: The min_time metric gives the fastest time the query was ever executed (measured in microseconds). It reflects the best-case performance scenario, which could indicate the query’s performance under optimal conditions.
 
 8. `WorstWorstCase` - Worst Worst-Case Query Performance
- * Formula: `worst_case = max_time`
- * Description: The max_time shows the slowest time the query was executed. This can indicate potential bottlenecks or edge cases where the query underperforms, which could be due to larger data sets, locks, or high server load.
+ * Formula: `worst_case = max(max_time)`
+ * Description: The max_time shows the slowest time the query was executed (measured in microseconds). This can indicate potential bottlenecks or edge cases where the query underperforms, which could be due to larger data sets, locks, or high server load.
 
 9. `DistanceMeanMax` - Distance Between Mean Time and Max Time (mean_time vs max_time)
  * Formula: `distance_mean_max = max_time - mean_time`
- * Description: The distance between the mean execution time and the maximum execution time provides insight into how much slower the worst-case execution is compared to the average. A large gap indicates significant variability in query performance, which could be caused by certain executions encountering performance bottlenecks, such as large datasets, locking, or high system load.
+ * Description: The distance between the mean execution time and the maximum execution time provides insight into how much slower the worst-case execution is compared to the average (measured in microseconds). A large gap indicates significant variability in query performance, which could be caused by certain executions encountering performance bottlenecks, such as large datasets, locking, or high system load.
 
 # Operation Mode
 The Operation Mode is a set of possible rules to run the scheduler. The options are:

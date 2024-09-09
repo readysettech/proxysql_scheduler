@@ -148,7 +148,7 @@ impl QueryDiscovery {
     AND s.count_star > {}
     AND s.sum_rows_sent > {}
     AND q.rule_id IS NULL
-    {} DESC
+    ORDER BY {} DESC
     LIMIT {} OFFSET {}",
             self.source_hostgroup,
             self.readyset_user,

@@ -12,10 +12,9 @@ const MIRROR_QUERY_TOKEN: &str = "Mirror by readyset scheduler at";
 const DESTINATION_QUERY_TOKEN: &str = "Added by readyset scheduler at";
 pub struct ProxySQL {
     readyset_hostgroup: u16,
-    warmup_time: u16,
+    warmup_time_s: u16,
     conn: mysql::Conn,
     hosts: Vec<Host>,
-    //queries: Vec<Query>,
 }
 
 impl ProxySQL {
@@ -58,17 +57,24 @@ impl ProxySQL {
         ProxySQL {
             conn,
             readyset_hostgroup: config.readyset_hostgroup,
-            warmup_time: config.warmup_time.unwrap_or(0),
+            warmup_time_s: config.warmup_time_s.unwrap_or(0),
             hosts,
         }
     }
 
     /// This function is used to add a query rule to ProxySQL.
     ///
+    /// # Arguments
+    ///
+    /// * `query` - A reference to a Query containing the query to be added as a rule.
+    ///
+    /// # Returns
+    ///
+    /// A boolean indicating if the rule was added successfully.
     pub fn add_as_query_rule(&mut self, query: &Query) -> Result<bool, mysql::Error> {
         let datetime_now: DateTime<Local> = Local::now();
         let date_formatted = datetime_now.format("%Y-%m-%d %H:%M:%S");
-        if self.warmup_time > 0 {
+        if self.warmup_time_s > 0 {
             self.conn.query_drop(format!("INSERT INTO mysql_query_rules (username, mirror_hostgroup, active, digest, apply, comment) VALUES ('{}', {}, 1, '{}', 1, '{}: {}')", query.get_user(), self.readyset_hostgroup, query.get_digest(), MIRROR_QUERY_TOKEN, date_formatted)).expect("Failed to insert into mysql_query_rules");
             messages::print_info("Inserted warm-up rule");
         } else {
@@ -135,7 +141,7 @@ impl ProxySQL {
             let elapsed = datetime_now
                 .signed_duration_since(datetime_mirror_rule)
                 .num_seconds();
-            if elapsed > self.warmup_time as i64 {
+            if elapsed > self.warmup_time_s as i64 {
                 let comment = format!(
                     "{}\n Added by readyset scheduler at: {}",
                     comment, date_formatted
@@ -150,6 +156,9 @@ impl ProxySQL {
         Ok(updated_rules)
     }
 
+    /// This function is used to check if a given host is healthy.
+    /// This is done by checking if the Readyset host has an active
+    /// connection and if the snapshot is completed.
     pub fn health_check(&mut self) {
         let mut status_changes = Vec::new();
 

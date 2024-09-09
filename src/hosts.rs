@@ -6,13 +6,13 @@ use mysql::{prelude::Queryable, Conn, OptsBuilder};
 /// Defines the possible status of a host
 #[derive(PartialEq, Clone, Copy)]
 pub enum HostStatus {
-    ///backend server is fully operational
+    /// backend server is fully operational
     Online,
-    //backend sever is temporarily taken out of use because of either too many connection errors in a time that was too short, or the replication lag exceeded the allowed threshold
+    /// backend sever is temporarily taken out of use because of either too many connection errors in a time that was too short, or the replication lag exceeded the allowed threshold
     Shunned,
-    //when a server is put into OFFLINE_SOFT mode, no new connections are created toward that server, while the existing connections are kept until they are returned to the connection pool or destructed. In other words, connections are kept in use until multiplexing is enabled again, for example when a transaction is completed. This makes it possible to gracefully detach a backend as long as multiplexing is efficient
+    /// when a server is put into OFFLINE_SOFT mode, no new connections are created toward that server, while the existing connections are kept until they are returned to the connection pool or destructed. In other words, connections are kept in use until multiplexing is enabled again, for example when a transaction is completed. This makes it possible to gracefully detach a backend as long as multiplexing is efficient
     OfflineSoft,
-    //when a server is put into OFFLINE_HARD mode, no new connections are created toward that server and the existing **free **connections are ** immediately dropped**, while backend connections currently associated with a client session are dropped as soon as the client tries to use them. This is equivalent to deleting the server from a hostgroup. Internally, setting a server in OFFLINE_HARD status is equivalent to deleting the server
+    /// when a server is put into OFFLINE_HARD mode, no new connections are created toward that server and the existing free connections are immediately dropped, while backend connections currently associated with a client session are dropped as soon as the client tries to use them. This is equivalent to deleting the server from a hostgroup. Internally, setting a server in OFFLINE_HARD status is equivalent to deleting the server
     OfflineHard,
 }
 
@@ -203,14 +203,18 @@ impl Host {
     /// true if the query was cached successfully, false otherwise.
     pub fn cache_query(&mut self, query: &Query) -> Result<bool, mysql::Error> {
         match &mut self.conn {
-            None => return Ok(false),
+            None => {
+                return Err(mysql::Error::IoError(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Connection to Readyset host is not established",
+                )))
+            }
             Some(conn) => {
                 conn.query_drop(format!(
                     "CREATE CACHE d_{} FROM {}",
                     query.get_digest(),
                     query.get_digest_text()
-                ))
-                .expect("Failed to create readyset cache");
+                ))?;
             }
         }
         Ok(true)

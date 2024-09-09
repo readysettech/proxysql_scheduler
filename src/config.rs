@@ -76,7 +76,7 @@ pub struct Config {
     pub readyset_password: String,
     pub source_hostgroup: u16,
     pub readyset_hostgroup: u16,
-    pub warmup_time: Option<u16>,
+    pub warmup_time_s: Option<u16>,
     pub lock_file: Option<String>,
     pub operation_mode: Option<OperationMode>,
     pub number_of_queries: u16,
