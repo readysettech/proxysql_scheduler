@@ -1,0 +1,13 @@
+proxysql_user = 'radmin'
+proxysql_password = 'radmin'
+proxysql_host = '127.0.0.1'
+proxysql_port = 6032
+readyset_user = 'root'
+readyset_password = 'noria'
+source_hostgroup = 1
+readyset_hostgroup = 2
+warmup_time_s = 10
+lock_file = '/tmp/readyset_scheduler.lock'
+operation_mode='All'
+number_of_queries=2
+query_discovery_mode='SumTime'

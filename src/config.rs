@@ -14,7 +14,7 @@ pub enum OperationMode {
 
 impl From<String> for OperationMode {
     fn from(s: String) -> Self {
-        match s.as_str() {
+        match s.to_lowercase().as_str() {
             "health_check" => OperationMode::HealthCheck,
             "query_discovery" => OperationMode::QueryDiscovery,
             "all" => OperationMode::All,
@@ -33,6 +33,39 @@ impl Display for OperationMode {
     }
 }
 
+#[derive(serde::Deserialize, Clone, Copy, PartialEq, PartialOrd, Default)]
+pub enum QueryDiscoveryMode {
+    #[default]
+    CountStar,
+    SumTime,
+    SumRowsSent,
+    MeanTime,
+    ExecutionTimeDistance,
+    QueryThroughput,
+    WorstBestCase,
+    WorstWorstCase,
+    DistanceMeanMax,
+    External,
+}
+
+impl From<String> for QueryDiscoveryMode {
+    fn from(s: String) -> Self {
+        match s.to_lowercase().as_str() {
+            "count_star" => QueryDiscoveryMode::CountStar,
+            "sum_time" => QueryDiscoveryMode::SumTime,
+            "sum_rows_sent" => QueryDiscoveryMode::SumRowsSent,
+            "mean_time" => QueryDiscoveryMode::MeanTime,
+            "execution_time_distance" => QueryDiscoveryMode::ExecutionTimeDistance,
+            "query_throughput" => QueryDiscoveryMode::QueryThroughput,
+            "worst_best_case" => QueryDiscoveryMode::WorstBestCase,
+            "worst_worst_case" => QueryDiscoveryMode::WorstWorstCase,
+            "distance_mean_max" => QueryDiscoveryMode::DistanceMeanMax,
+            "external" => QueryDiscoveryMode::External,
+            _ => QueryDiscoveryMode::CountStar,
+        }
+    }
+}
+
 #[derive(serde::Deserialize, Clone)]
 pub struct Config {
     pub proxysql_user: String,
@@ -41,14 +74,15 @@ pub struct Config {
     pub proxysql_port: u16,
     pub readyset_user: String,
     pub readyset_password: String,
-    pub readyset_host: String,
-    pub readyset_port: u16,
     pub source_hostgroup: u16,
     pub readyset_hostgroup: u16,
-    pub warmup_time: Option<u16>,
+    pub warmup_time_s: Option<u16>,
     pub lock_file: Option<String>,
     pub operation_mode: Option<OperationMode>,
     pub number_of_queries: u16,
+    pub query_discovery_mode: Option<QueryDiscoveryMode>,
+    pub query_discovery_min_execution: Option<u64>,
+    pub query_discovery_min_row_sent: Option<u64>,
 }
 
 pub fn read_config_file(path: &str) -> Result<String, std::io::Error> {

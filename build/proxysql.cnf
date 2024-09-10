@@ -17,14 +17,14 @@ mysql_variables=
 	monitor_password="noria"
 }
 
-mysql_users:
+mysql_users=
 (
 	{
-		username = "root"
-		password = "noria"
-		default_hostgroup = 1
+		username="root"
+		password="noria"
+		default_hostgroup=1
 		max_connections=1000
 		default_schema="noria"
-		active = 1
+		active=1
 	}
 )
