@@ -102,6 +102,3 @@ The Operation Mode is a set of possible rules to run the scheduler. The options 
 * `All` - Run `HealthCheck` and `QueryDiscovery` operations.
 * `HealthCheck` - Run only the health check operation.
 * `QueryDiscovery` - Run only the query discovery operation.
-
-# Note
-Readyset support of MySQL and this scheduler are alpha quality, meaning they are not currently part of our test cycle. Run your own testing before plugging this to your production system.
