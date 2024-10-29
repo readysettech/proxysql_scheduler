@@ -9,9 +9,9 @@ This scheduler executes the following steps:
 2. If `mode=(All|HealthCheck)` -  Query `mysql_servers` and check all servers that have `comment='Readyset` (case insensitive) and `hostgroup=readyset_hostgroup`. For each server it checks if it can connect to Readyset and validate if `Snapshot Status` is `Completed`. In case it cannot connect or Readyset is still performing snapshot it adjust the server status to `SHUNNED` in ProxySQL.
 3. If `mode=(All|QueryDiscovery)` Query the table `stats_mysql_query_digest` finding queries executed at `source_hostgroup` by `readyset_user` and validates if each query is supported by Readyset. The rules to order queries are configured by [Query Discovery](#query-discovery) configurations. 
 3. If the query is supported it adds a cache in Readyset by executing `CREATE CACHE FROM __query__`.
-4. If `warmup_time` is NOT configure, a new query rule will be added redirecting this query to Readyset
-5. If `warmup_time` is configured, a new query rule will be added to mirror this query to Readyset. The query will still be redirected to the original hostgroup
-6. Once `warmup_time` seconds has elapsed since the query was mirrored, the query rule will be updated to redirect the query to Readyset instead of mirroring.
+4. If `warmup_time_s` is NOT configure, a new query rule will be added redirecting this query to Readyset
+5. If `warmup_time_s` is configured, a new query rule will be added to mirror this query to Readyset. The query will still be redirected to the original hostgroup
+6. Once `warmup_time_s` seconds has elapsed since the query was mirrored, the query rule will be updated to redirect the query to Readyset instead of mirroring.
 
 
 
@@ -44,7 +44,7 @@ Configure `/etc/readyset_proxysql_scheduler.cnf` as follow:
 * `readyset_password` - (Required) - Readyset application password
 * `source_hostgroup` - (Required) - Hostgroup running your Read workload
 * `readyset_hostgroup` - (Required) - Hostgroup where Readyset is configure
-* `warmup_time` - (Optional) - Time in seconds to mirror a query supported before redirecting the query to Readyset (Default 0 - no mirror)
+* `warmup_time_s` - (Optional) - Time in seconds to mirror a query supported before redirecting the query to Readyset (Default 0 - no mirror)
 * `lock_file` - (Optional) - Lock file to prevent two instances of the scheduler to run at the same time (Default '/etc/readyset_scheduler.lock')
 * `operation_mode` - (Optional) - Operation mode to run the scheduler. The options are described in [Operation Mode](#operation-mode) (Default All).
 * `number_of_queries` - (Optional) - Number of queries to cache in Readyset (Default 10).

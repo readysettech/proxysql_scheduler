@@ -244,7 +244,7 @@ impl QueryDiscovery {
                 rows.iter()
                     .map(|(digest_text, digest, schema)| {
                         Query::new(
-                            digest_text.to_string(),
+                            self.replace_placeholders(digest_text),
                             digest.to_string(),
                             schema.to_string(),
                             self.readyset_user.clone(),
@@ -257,6 +257,7 @@ impl QueryDiscovery {
 
     fn replace_placeholders(&self, query: &str) -> String {
         // date placeholder
-        query.replace("?-?-?", "?")
+        // multiple placeholders
+        query.replace("?,?,?,...", "?,?,?").replace("?-?-?", "?")
     }
 }
