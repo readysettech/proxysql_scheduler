@@ -198,12 +198,12 @@ impl ProxySQL {
                     )
                     .as_str(),
                 );
+                host.change_status(status);
                 let _ = self.conn.query_drop(format!(
                     "UPDATE mysql_servers SET status = '{}' {}",
                     host.get_status(),
                     where_clause
                 ));
-                host.change_status(status);
                 let _ = self.conn.query_drop("LOAD MYSQL SERVERS TO RUNTIME");
                 let _ = self.conn.query_drop("SAVE MYSQL SERVERS TO DISK");
             }
