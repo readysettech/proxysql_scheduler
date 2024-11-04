@@ -39,7 +39,7 @@ impl ProxySQL {
         .expect("Failed to create ProxySQL connection");
 
         let query = format!(
-            "SELECT hostname, port, status, comment FROM mysql_servers WHERE hostgroup_id = {}",
+            "SELECT hostname, port, status, comment FROM mysql_servers WHERE hostgroup_id = {} AND status IN ('ONLINE', 'SHUNNED')",
             config.readyset_hostgroup
         );
         let results: Vec<(String, u16, String, String)> = conn.query(query).unwrap();
