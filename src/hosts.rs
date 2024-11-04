@@ -1,6 +1,7 @@
 use crate::{config::Config, queries::Query};
 use core::fmt;
 use mysql::{prelude::Queryable, Conn, OptsBuilder};
+use std::time::Duration;
 
 #[allow(dead_code)]
 /// Defines the possible status of a host
@@ -68,7 +69,10 @@ impl Host {
                 .tcp_port(port)
                 .user(Some(config.readyset_user.clone()))
                 .pass(Some(config.readyset_password.clone()))
-                .prefer_socket(false),
+                .prefer_socket(false)
+                .read_timeout(Some(Duration::from_secs(5)))
+                .write_timeout(Some(Duration::from_secs(5)))
+                .tcp_connect_timeout(Some(Duration::from_secs(5))),
         ) {
             Ok(conn) => conn,
             Err(err) => {
@@ -144,14 +148,22 @@ impl Host {
     pub fn check_readyset_is_ready(&mut self) -> Result<bool, mysql::Error> {
         match &mut self.conn {
             Some(conn) => {
-                let rows: Vec<(String, String)> =
-                    conn.query("SHOW READYSET STATUS").unwrap_or(vec![]);
-                for (field, value) in rows {
-                    if field == "Snapshot Status" {
-                        return Ok(value == "Completed");
+                let result = conn.query("SHOW READYSET STATUS");
+                match result {
+                    Ok(rows) => {
+                        let rows: Vec<(String, String)> = rows;
+                        for (field, value) in rows {
+                            if field == "Snapshot Status" {
+                                return Ok(value == "Completed");
+                            }
+                        }
+                        Ok(false)
                     }
+                    Err(err) => Err(mysql::Error::IoError(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to execute query: {}", err),
+                    ))),
                 }
-                Ok(false)
             }
             None => Err(mysql::Error::IoError(std::io::Error::new(
                 std::io::ErrorKind::Other,
