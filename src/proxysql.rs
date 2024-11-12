@@ -76,10 +76,10 @@ impl ProxySQL {
         let date_formatted = datetime_now.format("%Y-%m-%d %H:%M:%S");
         if self.warmup_time_s > 0 {
             self.conn.query_drop(format!("INSERT INTO mysql_query_rules (username, mirror_hostgroup, active, digest, apply, comment) VALUES ('{}', {}, 1, '{}', 1, '{}: {}')", query.get_user(), self.readyset_hostgroup, query.get_digest(), MIRROR_QUERY_TOKEN, date_formatted)).expect("Failed to insert into mysql_query_rules");
-            messages::print_info("Inserted warm-up rule");
+            messages::print_note("Inserted warm-up rule");
         } else {
             self.conn.query_drop(format!("INSERT INTO mysql_query_rules (username, destination_hostgroup, active, digest, apply, comment) VALUES ('{}', {}, 1, '{}', 1, '{}: {}')", query.get_user(), self.readyset_hostgroup, query.get_digest(), DESTINATION_QUERY_TOKEN, date_formatted)).expect("Failed to insert into mysql_query_rules");
-            messages::print_info("Inserted destination rule");
+            messages::print_note("Inserted destination rule");
         }
         Ok(true)
     }
@@ -147,7 +147,7 @@ impl ProxySQL {
                     comment, date_formatted
                 );
                 self.conn.query_drop(format!("UPDATE mysql_query_rules SET mirror_hostgroup = NULL, destination_hostgroup = {}, comment = '{}' WHERE rule_id = {}", self.readyset_hostgroup, comment, rule_id)).expect("Failed to update rule");
-                messages::print_info(
+                messages::print_note(
                     format!("Updated rule ID {} from warmup to destination", rule_id).as_str(),
                 );
                 updated_rules = true;
@@ -168,7 +168,7 @@ impl ProxySQL {
                     if ready {
                         status_changes.push((host, HostStatus::Online));
                     } else {
-                        messages::print_info("Readyset is still running Snapshot.");
+                        messages::print_note("Readyset is still running Snapshot.");
                         status_changes.push((host, HostStatus::Shunned));
                     }
                 }
@@ -187,7 +187,7 @@ impl ProxySQL {
                     host.get_hostname(),
                     host.get_port()
                 );
-                messages::print_info(
+                messages::print_note(
                     format!(
                         "Server HG: {}, Host: {}, Port: {} is currently {}. Changing to {}",
                         self.readyset_hostgroup,

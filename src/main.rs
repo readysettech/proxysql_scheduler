@@ -7,6 +7,7 @@ mod queries;
 use clap::Parser;
 use config::read_config_file;
 use file_guard::Lock;
+use messages::MessageType;
 use mysql::{Conn, OptsBuilder};
 use proxysql::ProxySQL;
 use std::fs::OpenOptions;
@@ -22,10 +23,11 @@ struct Args {
 }
 
 fn main() {
-    messages::print_info("Running readyset_scheduler");
     let args = Args::parse();
     let config_file = read_config_file(&args.config).expect("Failed to read config file");
     let config = config::parse_config_file(&config_file).expect("Failed to parse config file");
+    messages::set_log_verbosity(config.clone().log_verbosity.unwrap_or(MessageType::Note));
+    messages::print_info("Running readyset_scheduler");
     let file = match OpenOptions::new()
         .read(true)
         .write(true)

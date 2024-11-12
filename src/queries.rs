@@ -178,7 +178,7 @@ impl QueryDiscovery {
                     break;
                 }
                 let digest_text = self.replace_placeholders(query.get_digest_text());
-                messages::print_info(
+                messages::print_note(
                     format!("Going to test query support for {}", digest_text).as_str(),
                 );
                 let supported = proxysql
@@ -187,7 +187,7 @@ impl QueryDiscovery {
                     .check_query_support(&digest_text, query.get_schema()); // Safe to unwrap because we checked if hosts is empty
                 match supported {
                     Ok(true) => {
-                        messages::print_info(
+                        messages::print_note(
                             "Query is supported, adding it to proxysql and readyset"
                                 .to_string()
                                 .as_str(),
@@ -203,7 +203,7 @@ impl QueryDiscovery {
                         current_queries_digest.push(query.get_digest().to_string());
                     }
                     Ok(false) => {
-                        messages::print_info("Query is not supported");
+                        messages::print_note("Query is not supported");
                     }
                     Err(err) => {
                         messages::print_warning(

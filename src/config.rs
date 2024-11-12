@@ -4,7 +4,9 @@ use std::{
     io::Read,
 };
 
-#[derive(serde::Deserialize, Clone, Copy, PartialEq, PartialOrd, Default)]
+use crate::messages::MessageType;
+
+#[derive(serde::Deserialize, Clone, Copy, PartialEq, PartialOrd, Default, Debug)]
 pub enum OperationMode {
     HealthCheck,
     QueryDiscovery,
@@ -33,7 +35,7 @@ impl Display for OperationMode {
     }
 }
 
-#[derive(serde::Deserialize, Clone, Copy, PartialEq, PartialOrd, Default)]
+#[derive(serde::Deserialize, Clone, Copy, PartialEq, PartialOrd, Default, Debug)]
 pub enum QueryDiscoveryMode {
     #[default]
     CountStar,
@@ -66,7 +68,7 @@ impl From<String> for QueryDiscoveryMode {
     }
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, Clone, Debug)]
 pub struct Config {
     pub proxysql_user: String,
     pub proxysql_password: String,
@@ -83,6 +85,7 @@ pub struct Config {
     pub query_discovery_mode: Option<QueryDiscoveryMode>,
     pub query_discovery_min_execution: Option<u64>,
     pub query_discovery_min_row_sent: Option<u64>,
+    pub log_verbosity: Option<MessageType>,
 }
 
 pub fn read_config_file(path: &str) -> Result<String, std::io::Error> {
