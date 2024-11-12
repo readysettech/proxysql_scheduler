@@ -1275,7 +1275,7 @@ dependencies = [
 
 [[package]]
 name = "readyset_proxysql_scheduler"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "clap",
