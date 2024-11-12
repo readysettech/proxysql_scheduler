@@ -15,6 +15,7 @@ pub struct ProxySQL {
     warmup_time_s: u16,
     conn: mysql::Conn,
     hosts: Vec<Host>,
+    dry_run: bool,
 }
 
 impl ProxySQL {
@@ -27,7 +28,7 @@ impl ProxySQL {
     /// # Returns
     ///
     /// A new ProxySQL struct.
-    pub fn new(config: &config::Config) -> Self {
+    pub fn new(config: &config::Config, dry_run: bool) -> Self {
         let mut conn = Conn::new(
             OptsBuilder::new()
                 .ip_or_hostname(Some(config.proxysql_host.as_str()))
@@ -59,7 +60,18 @@ impl ProxySQL {
             readyset_hostgroup: config.readyset_hostgroup,
             warmup_time_s: config.warmup_time_s.unwrap_or(0),
             hosts,
+            dry_run,
         }
+    }
+
+    /// This function is used to get the dry_run field.
+    /// This field is used to indicate if the ProxySQL operations should be executed or not.
+    ///
+    /// # Returns
+    ///
+    /// A boolean indicating if the ProxySQL operations should be executed or not.
+    pub fn dry_run(&self) -> bool {
+        self.dry_run
     }
 
     /// This function is used to add a query rule to ProxySQL.
@@ -199,6 +211,10 @@ impl ProxySQL {
                     .as_str(),
                 );
                 host.change_status(status);
+                if self.dry_run {
+                    messages::print_info("Dry run, skipping changes to ProxySQL");
+                    continue;
+                }
                 let _ = self.conn.query_drop(format!(
                     "UPDATE mysql_servers SET status = '{}' {}",
                     host.get_status(),

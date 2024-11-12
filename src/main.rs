@@ -19,6 +19,9 @@ struct Args {
     /// path to the config file
     #[arg(long)]
     config: String,
+    /// Dry run mode
+    #[arg(long)]
+    dry_run: bool,
 }
 
 fn main() {
@@ -61,7 +64,7 @@ fn main() {
         }
     };
 
-    let mut proxysql = ProxySQL::new(&config);
+    let mut proxysql = ProxySQL::new(&config, args.dry_run);
 
     let running_mode = match config.operation_mode {
         Some(mode) => mode,

@@ -193,13 +193,17 @@ impl QueryDiscovery {
                                 .as_str(),
                         );
                         queries_added_or_change = true;
-                        proxysql.get_online_hosts().iter_mut().for_each(|host| {
-                            host.cache_query(query)
-                                .expect("Failed to create readyset cache");
-                        });
-                        proxysql
-                            .add_as_query_rule(query)
-                            .expect("Failed to add query rule");
+                        if !proxysql.dry_run() {
+                            proxysql.get_online_hosts().iter_mut().for_each(|host| {
+                                host.cache_query(query)
+                                    .expect("Failed to create readyset cache");
+                            });
+                            proxysql
+                                .add_as_query_rule(query)
+                                .expect("Failed to add query rule");
+                        } else {
+                            messages::print_info("Dry run, not adding query");
+                        }
                         current_queries_digest.push(query.get_digest().to_string());
                     }
                     Ok(false) => {
