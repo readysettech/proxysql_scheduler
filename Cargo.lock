@@ -1281,6 +1281,7 @@ dependencies = [
  "clap",
  "file-guard",
  "mysql",
+ "once_cell",
  "serde",
  "toml",
 ]
