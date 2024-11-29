@@ -195,14 +195,13 @@ impl QueryDiscovery {
                         queries_added_or_change = true;
                         if !proxysql.dry_run() {
                             proxysql.get_online_hosts().iter_mut().for_each(|host| {
-                                host.cache_query(query).expect(
-                                    format!(
+                                host.cache_query(query).unwrap_or_else(|_| {
+                                    panic!(
                                         "Failed to create readyset cache on host {}:{}",
                                         host.get_hostname(),
                                         host.get_port()
                                     )
-                                    .as_str(),
-                                );
+                                });
                             });
                             proxysql
                                 .add_as_query_rule(query)
