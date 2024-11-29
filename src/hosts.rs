@@ -222,6 +222,7 @@ impl Host {
                 )))
             }
             Some(conn) => {
+                conn.query_drop(format!("USE {}", query.get_schema()))?;
                 conn.query_drop(format!(
                     "CREATE CACHE d_{} FROM {}",
                     query.get_digest(),
