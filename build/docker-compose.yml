@@ -28,7 +28,7 @@ services:
       - "3307:3307"
       - "6034:6034"
     environment:
-      - UPSTREAM_DB_URL=mysql://root:noria@172.17.0.1:3306/imdb
+      - UPSTREAM_DB_URL=mysql://root:noria@172.17.0.1:3306/noria
       - LISTEN_ADDRESS=0.0.0.0:3307
     depends_on:
       mysql-master:
