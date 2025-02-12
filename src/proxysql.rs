@@ -3,7 +3,7 @@ use mysql::{prelude::Queryable, Conn, OptsBuilder};
 
 use crate::{
     config,
-    hosts::{Host, HostStatus},
+    hosts::{Host, ProxyStatus},
     messages,
     queries::Query,
 };
@@ -40,7 +40,7 @@ impl ProxySQL {
         .expect("Failed to create ProxySQL connection");
 
         let query = format!(
-            "SELECT hostname, port, status, comment FROM mysql_servers WHERE hostgroup_id = {} AND status IN ('ONLINE', 'SHUNNED')",
+            "SELECT hostname, port, status, comment FROM mysql_servers WHERE hostgroup_id = {} AND status IN ('ONLINE', 'SHUNNED', 'OFFLINE_SOFT')",
             config.readyset_hostgroup
         );
         let results: Vec<(String, u16, String, String)> = conn.query(query).unwrap();
@@ -176,23 +176,29 @@ impl ProxySQL {
 
         for host in self.hosts.iter_mut() {
             match host.check_readyset_is_ready() {
-                Ok(ready) => {
-                    if ready {
-                        status_changes.push((host, HostStatus::Online));
-                    } else {
-                        messages::print_note("Readyset is still running Snapshot.");
-                        status_changes.push((host, HostStatus::Shunned));
+                Ok(ready) => match ready {
+                    ProxyStatus::Online => {
+                        status_changes.push((host, ProxyStatus::Online));
                     }
-                }
+                    ProxyStatus::Shunned => {
+                        status_changes.push((host, ProxyStatus::Shunned));
+                    }
+                    ProxyStatus::OfflineSoft => {
+                        status_changes.push((host, ProxyStatus::OfflineSoft));
+                    }
+                    ProxyStatus::OfflineHard => {
+                        status_changes.push((host, ProxyStatus::OfflineHard));
+                    }
+                },
                 Err(e) => {
                     messages::print_error(format!("Cannot check Readyset status: {}.", e).as_str());
-                    status_changes.push((host, HostStatus::Shunned));
+                    status_changes.push((host, ProxyStatus::Shunned));
                 }
             };
         }
 
         for (host, status) in status_changes {
-            if host.get_status() != status {
+            if host.get_proxysql_status() != status {
                 let where_clause = format!(
                     "WHERE hostgroup_id = {} AND hostname = '{}' AND port = {}",
                     self.readyset_hostgroup,
@@ -201,23 +207,24 @@ impl ProxySQL {
                 );
                 messages::print_note(
                     format!(
-                        "Server HG: {}, Host: {}, Port: {} is currently {}. Changing to {}",
+                        "Server HG: {}, Host: {}, Port: {} is currently {} on proxysql and {} on readyset. Changing to {}",
                         self.readyset_hostgroup,
                         host.get_hostname(),
                         host.get_port(),
-                        host.get_status(),
+                        host.get_proxysql_status(),
+                        host.get_readyset_status().to_string().to_uppercase(),
                         status
                     )
                     .as_str(),
                 );
-                host.change_status(status);
+                host.change_proxysql_status(status);
                 if self.dry_run {
                     messages::print_info("Dry run, skipping changes to ProxySQL");
                     continue;
                 }
                 let _ = self.conn.query_drop(format!(
                     "UPDATE mysql_servers SET status = '{}' {}",
-                    host.get_status(),
+                    host.get_proxysql_status(),
                     where_clause
                 ));
                 let _ = self.conn.query_drop("LOAD MYSQL SERVERS TO RUNTIME");
@@ -235,7 +242,7 @@ impl ProxySQL {
     pub fn number_of_online_hosts(&self) -> u16 {
         self.hosts
             .iter()
-            .filter(|host| host.is_online())
+            .filter(|host| host.is_proxysql_online())
             .collect::<Vec<&Host>>()
             .len() as u16
     }
@@ -247,7 +254,7 @@ impl ProxySQL {
     ///
     /// An Option containing a reference to the first online host.
     pub fn get_first_online_host(&mut self) -> Option<&mut Host> {
-        self.hosts.iter_mut().find(|host| host.is_online())
+        self.hosts.iter_mut().find(|host| host.is_proxysql_online())
     }
 
     /// This function is used to get all the online hosts.
@@ -259,7 +266,7 @@ impl ProxySQL {
     pub fn get_online_hosts(&mut self) -> Vec<&mut Host> {
         self.hosts
             .iter_mut()
-            .filter(|host| host.is_online())
+            .filter(|host| host.is_proxysql_online())
             .collect()
     }
 }
