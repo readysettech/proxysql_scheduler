@@ -6,8 +6,11 @@ Unlock the full potential of your database integrating ReadySet and ProxySQL by 
 This scheduler executes the following steps:
 
 1. Locks an in disk file (configured by `lock_file`) to avoid multiple instances of the scheduler to overlap their execution.
-2. If `mode=(All|HealthCheck)` -  Query `mysql_servers` and check all servers that have `comment='Readyset` (case insensitive) and `hostgroup=readyset_hostgroup`. For each server it checks if it can connect to Readyset and validate if `Snapshot Status` is `Completed`. In case it cannot connect or Readyset is still performing snapshot it adjust the server status to `SHUNNED` in ProxySQL.
-3. If `mode=(All|QueryDiscovery)` Query the table `stats_mysql_query_digest` finding queries executed at `source_hostgroup` by `readyset_user` and validates if each query is supported by Readyset. The rules to order queries are configured by [Query Discovery](#query-discovery) configurations. 
+2. If `mode=(All|HealthCheck)` -  Query `mysql_servers` and check all servers that have `comment='Readyset` (case insensitive) and `hostgroup=readyset_hostgroup`. For each server it checks if it can connect to Readyset and validate the output of  `Status` and act as follow:
+   * `Online` - Adjust the server status to `ONLINE` in ProxySQL.
+   * `Maitenance Mode` -  Adjust the server status to `OFFLINE_SOFT` in ProxySQL.
+   * `Snapshot In Progress` - Adjust the server status to `SHUNNED` in ProxySQL.
+4. If `mode=(All|QueryDiscovery)` Query the table `stats_mysql_query_digest` finding queries executed at `source_hostgroup` by `readyset_user` and validates if each query is supported by Readyset. The rules to order queries are configured by [Query Discovery](#query-discovery) configurations. 
 3. If the query is supported it adds a cache in Readyset by executing `CREATE CACHE FROM __query__`.
 4. If `warmup_time_s` is NOT configure, a new query rule will be added redirecting this query to Readyset
 5. If `warmup_time_s` is configured, a new query rule will be added to mirror this query to Readyset. The query will still be redirected to the original hostgroup
