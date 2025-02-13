@@ -6,7 +6,7 @@ use std::time::Duration;
 #[allow(dead_code)]
 /// Defines the possible status of a host
 #[derive(PartialEq, Clone, Copy)]
-pub enum HostStatus {
+pub enum ProxyStatus {
     /// backend server is fully operational
     Online,
     /// backend sever is temporarily taken out of use because of either too many connection errors in a time that was too short, or the replication lag exceeded the allowed threshold
@@ -17,25 +17,66 @@ pub enum HostStatus {
     OfflineHard,
 }
 
-impl fmt::Display for HostStatus {
+impl fmt::Display for ProxyStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HostStatus::Online => write!(f, "ONLINE"),
-            HostStatus::Shunned => write!(f, "SHUNNED"),
-            HostStatus::OfflineSoft => write!(f, "OFFLINE_SOFT"),
-            HostStatus::OfflineHard => write!(f, "OFFLINE_HARD"),
+            ProxyStatus::Online => write!(f, "ONLINE"),
+            ProxyStatus::Shunned => write!(f, "SHUNNED"),
+            ProxyStatus::OfflineSoft => write!(f, "OFFLINE_SOFT"),
+            ProxyStatus::OfflineHard => write!(f, "OFFLINE_HARD"),
         }
     }
 }
 
-impl From<String> for HostStatus {
+impl From<String> for ProxyStatus {
     fn from(s: String) -> Self {
         match s.to_uppercase().as_str() {
-            "ONLINE" => HostStatus::Online,
-            "SHUNNED" => HostStatus::Shunned,
-            "OFFLINE_SOFT" => HostStatus::OfflineSoft,
-            "OFFLINE_HARD" => HostStatus::OfflineHard,
-            _ => HostStatus::Online,
+            "ONLINE" => ProxyStatus::Online,
+            "SHUNNED" => ProxyStatus::Shunned,
+            "OFFLINE_SOFT" => ProxyStatus::OfflineSoft,
+            "OFFLINE_HARD" => ProxyStatus::OfflineHard,
+            _ => ProxyStatus::Online,
+        }
+    }
+}
+
+impl From<ReadysetStatus> for ProxyStatus {
+    fn from(status: ReadysetStatus) -> Self {
+        match status {
+            ReadysetStatus::Online => ProxyStatus::Online,
+            ReadysetStatus::SnapshotInProgress => ProxyStatus::Shunned,
+            ReadysetStatus::Maintenance => ProxyStatus::OfflineSoft,
+            ReadysetStatus::Unknown => ProxyStatus::Shunned,
+        }
+    }
+}
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum ReadysetStatus {
+    Online,
+    SnapshotInProgress,
+    Maintenance,
+    Unknown,
+}
+
+impl fmt::Display for ReadysetStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ReadysetStatus::Online => write!(f, "Online"),
+            ReadysetStatus::SnapshotInProgress => write!(f, "Snapshot in progress"),
+            ReadysetStatus::Maintenance => write!(f, "Maintenance mode"),
+            ReadysetStatus::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
+impl From<String> for ReadysetStatus {
+    fn from(s: String) -> Self {
+        match s.to_lowercase().as_str() {
+            "online" => ReadysetStatus::Online,
+            "snapshot in progress" => ReadysetStatus::SnapshotInProgress,
+            "maintenance mode" => ReadysetStatus::Maintenance,
+            _ => ReadysetStatus::Unknown,
         }
     }
 }
@@ -44,7 +85,8 @@ impl From<String> for HostStatus {
 pub struct Host {
     hostname: String,
     port: u16,
-    status: HostStatus,
+    proxysql_status: ProxyStatus,
+    readyset_status: ReadysetStatus,
     conn: Option<Conn>,
 }
 
@@ -62,7 +104,7 @@ impl Host {
     /// # Returns
     ///
     /// A new `Host` instance.
-    pub fn new(hostname: String, port: u16, status: String, config: &Config) -> Host {
+    pub fn new(hostname: String, port: u16, proxysql_status: String, config: &Config) -> Host {
         let conn = match Conn::new(
             OptsBuilder::new()
                 .ip_or_hostname(Some(hostname.clone()))
@@ -80,7 +122,8 @@ impl Host {
                 return Host {
                     hostname,
                     port,
-                    status: HostStatus::from(status),
+                    proxysql_status: ProxyStatus::from(proxysql_status),
+                    readyset_status: ReadysetStatus::Unknown,
                     conn: None,
                 };
             }
@@ -89,7 +132,8 @@ impl Host {
         Host {
             hostname,
             port,
-            status: HostStatus::from(status),
+            proxysql_status: ProxyStatus::from(proxysql_status),
+            readyset_status: ReadysetStatus::Unknown,
             conn: Some(conn),
         }
     }
@@ -112,31 +156,40 @@ impl Host {
         self.port
     }
 
-    /// Gets the status of the host.
+    /// Gets the proxysql status of the host.
     ///
     /// # Returns
     ///
     /// The status of the host.
-    pub fn get_status(&self) -> HostStatus {
-        self.status
+    pub fn get_proxysql_status(&self) -> ProxyStatus {
+        self.proxysql_status
     }
 
-    /// Changes the status of the host.
+    /// Changes the proxysql status of the host.
     ///
     /// # Arguments
     ///
     /// * `status` - The new status of the host.
-    pub fn change_status(&mut self, status: HostStatus) {
-        self.status = status;
+    pub fn change_proxysql_status(&mut self, status: ProxyStatus) {
+        self.proxysql_status = status;
     }
 
-    /// Checks if the host is online.
+    /// Checks if the host is online in proxysql.
     ///
     /// # Returns
     ///
     /// true if the host is online, false otherwise.
-    pub fn is_online(&self) -> bool {
-        self.status == HostStatus::Online
+    pub fn is_proxysql_online(&self) -> bool {
+        self.proxysql_status == ProxyStatus::Online
+    }
+
+    /// Gets the readyset status of the host.
+    ///
+    /// # Returns
+    ///
+    /// The status of the host.
+    pub fn get_readyset_status(&self) -> ReadysetStatus {
+        self.readyset_status
     }
 
     /// Checks if the Readyset host is ready to serve traffic.
@@ -145,7 +198,7 @@ impl Host {
     /// # Returns
     ///
     /// true if the host is ready, false otherwise.
-    pub fn check_readyset_is_ready(&mut self) -> Result<bool, mysql::Error> {
+    pub fn check_readyset_is_ready(&mut self) -> Result<ProxyStatus, mysql::Error> {
         match &mut self.conn {
             Some(conn) => {
                 let result = conn.query("SHOW READYSET STATUS");
@@ -153,11 +206,20 @@ impl Host {
                     Ok(rows) => {
                         let rows: Vec<(String, String)> = rows;
                         for (field, value) in rows {
-                            if field == "Snapshot Status" {
-                                return Ok(value == "Completed");
+                            if field == "Snapshot Status" && value == "Completed" {
+                                self.readyset_status = ReadysetStatus::Online;
+                                return Ok(ProxyStatus::Online);
+                            } else if field == "Snapshot Status" && value == "In Progress" {
+                                self.readyset_status = ReadysetStatus::SnapshotInProgress;
+                                return Ok(ProxyStatus::Shunned);
+                            } else if field == "Status" {
+                                let status = ReadysetStatus::from(value);
+                                self.readyset_status = status;
+                                return Ok(status.into());
                             }
                         }
-                        Ok(false)
+                        self.readyset_status = ReadysetStatus::Unknown;
+                        Ok(ProxyStatus::Shunned)
                     }
                     Err(err) => Err(mysql::Error::IoError(std::io::Error::new(
                         std::io::ErrorKind::Other,
