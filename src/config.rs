@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use std::{
     fmt::{Display, Formatter},
     fs::File,
@@ -6,7 +7,7 @@ use std::{
 
 use crate::messages::MessageType;
 
-#[derive(serde::Deserialize, Clone, Copy, PartialEq, PartialOrd, Default, Debug)]
+#[derive(Deserialize, Clone, Copy, PartialEq, PartialOrd, Default, Debug)]
 pub enum OperationMode {
     HealthCheck,
     QueryDiscovery,
@@ -35,7 +36,7 @@ impl Display for OperationMode {
     }
 }
 
-#[derive(serde::Deserialize, Clone, Copy, PartialEq, PartialOrd, Default, Debug)]
+#[derive(Deserialize, Clone, Copy, PartialEq, PartialOrd, Default, Debug)]
 pub enum QueryDiscoveryMode {
     #[default]
     CountStar,
@@ -50,25 +51,7 @@ pub enum QueryDiscoveryMode {
     External,
 }
 
-impl From<String> for QueryDiscoveryMode {
-    fn from(s: String) -> Self {
-        match s.to_lowercase().as_str() {
-            "count_star" => QueryDiscoveryMode::CountStar,
-            "sum_time" => QueryDiscoveryMode::SumTime,
-            "sum_rows_sent" => QueryDiscoveryMode::SumRowsSent,
-            "mean_time" => QueryDiscoveryMode::MeanTime,
-            "execution_time_distance" => QueryDiscoveryMode::ExecutionTimeDistance,
-            "query_throughput" => QueryDiscoveryMode::QueryThroughput,
-            "worst_best_case" => QueryDiscoveryMode::WorstBestCase,
-            "worst_worst_case" => QueryDiscoveryMode::WorstWorstCase,
-            "distance_mean_max" => QueryDiscoveryMode::DistanceMeanMax,
-            "external" => QueryDiscoveryMode::External,
-            _ => QueryDiscoveryMode::CountStar,
-        }
-    }
-}
-
-#[derive(serde::Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct Config {
     pub proxysql_user: String,
     pub proxysql_password: String,

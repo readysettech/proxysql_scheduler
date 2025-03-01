@@ -2,19 +2,20 @@ use chrono::{DateTime, Local};
 use mysql::{prelude::Queryable, Conn, OptsBuilder};
 
 use crate::{
-    config,
-    hosts::{Host, ProxyStatus},
+    config::Config,
     messages,
     queries::Query,
+    readyset::{ProxySQLStatus, Readyset},
 };
 
 const MIRROR_QUERY_TOKEN: &str = "Mirror by readyset scheduler at";
 const DESTINATION_QUERY_TOKEN: &str = "Added by readyset scheduler at";
+
 pub struct ProxySQL {
     readyset_hostgroup: u16,
     warmup_time_s: u16,
-    conn: mysql::Conn,
-    hosts: Vec<Host>,
+    conn: Conn,
+    readysets: Vec<Readyset>,
     dry_run: bool,
 }
 
@@ -23,12 +24,13 @@ impl ProxySQL {
     ///
     /// # Arguments
     ///
-    /// * `config` - A reference to a config::Config containing the configuration for the ProxySQL connection.
+    /// * `config` - The config for this instance of the scheduler.
+    /// * `dry_run` - Whether or not ProxySQL operations should be executed.
     ///
     /// # Returns
     ///
     /// A new ProxySQL struct.
-    pub fn new(config: &config::Config, dry_run: bool) -> Self {
+    pub fn new(config: &Config, dry_run: bool) -> Self {
         let mut conn = Conn::new(
             OptsBuilder::new()
                 .ip_or_hostname(Some(config.proxysql_host.as_str()))
@@ -44,32 +46,31 @@ impl ProxySQL {
             config.readyset_hostgroup
         );
         let results: Vec<(String, u16, String, String)> = conn.query(query).unwrap();
-        let hosts = results
+        let readysets = results
             .into_iter()
             .filter_map(|(hostname, port, status, comment)| {
                 if comment.to_lowercase().contains("readyset") {
-                    Some(Host::new(hostname, port, status, config))
+                    Some(Readyset::new(hostname, port, status, config))
                 } else {
                     None
                 }
             })
-            .collect::<Vec<Host>>();
+            .collect::<Vec<Readyset>>();
 
         ProxySQL {
             conn,
             readyset_hostgroup: config.readyset_hostgroup,
             warmup_time_s: config.warmup_time_s.unwrap_or(0),
-            hosts,
+            readysets,
             dry_run,
         }
     }
 
-    /// This function is used to get the dry_run field.
-    /// This field is used to indicate if the ProxySQL operations should be executed or not.
+    /// Indicates if ProxySQL operations should be executed or not.
     ///
     /// # Returns
     ///
-    /// A boolean indicating if the ProxySQL operations should be executed or not.
+    /// A boolean indicating if ProxySQL operations should be executed or not.
     pub fn dry_run(&self) -> bool {
         self.dry_run
     }
@@ -79,11 +80,7 @@ impl ProxySQL {
     /// # Arguments
     ///
     /// * `query` - A reference to a Query containing the query to be added as a rule.
-    ///
-    /// # Returns
-    ///
-    /// A boolean indicating if the rule was added successfully.
-    pub fn add_as_query_rule(&mut self, query: &Query) -> Result<bool, mysql::Error> {
+    pub fn add_as_query_rule(&mut self, query: &Query) {
         let datetime_now: DateTime<Local> = Local::now();
         let date_formatted = datetime_now.format("%Y-%m-%d %H:%M:%S");
         if self.warmup_time_s > 0 {
@@ -93,37 +90,31 @@ impl ProxySQL {
             self.conn.query_drop(format!("INSERT INTO mysql_query_rules (username, destination_hostgroup, active, digest, apply, comment) VALUES ('{}', {}, 1, '{}', 1, '{}: {}')", query.get_user(), self.readyset_hostgroup, query.get_digest(), DESTINATION_QUERY_TOKEN, date_formatted)).expect("Failed to insert into mysql_query_rules");
             messages::print_note("Inserted destination rule");
         }
-        Ok(true)
     }
 
-    pub fn load_query_rules(&mut self) -> Result<bool, mysql::Error> {
+    pub fn load_query_rules(&mut self) {
         self.conn
             .query_drop("LOAD MYSQL QUERY RULES TO RUNTIME")
             .expect("Failed to load query rules");
-        Ok(true)
     }
-    pub fn save_query_rules(&mut self) -> Result<bool, mysql::Error> {
+
+    pub fn save_query_rules(&mut self) {
         self.conn
             .query_drop("SAVE MYSQL QUERY RULES TO DISK")
-            .expect("Failed to load query rules");
-        Ok(true)
+            .expect("Failed to save query rules");
     }
 
     /// This function is used to check the current list of queries routed to Readyset.
     ///
-    /// # Arguments
-    /// * `conn` - A reference to a connection to ProxySQL.
-    ///
     /// # Returns
-    /// A vector of tuples containing the digest_text, digest, and schemaname of the queries that are currently routed to ReadySet.
+    /// A vector of tuples containing the digest_text, digest, and schemaname of the queries that are currently routed to Readyset.
     pub fn find_queries_routed_to_readyset(&mut self) -> Vec<String> {
         let rows: Vec<String> = self
             .conn
             .query(format!(
-            "SELECT digest FROM mysql_query_rules WHERE comment LIKE '{}%' OR comment LIKE '{}%'",
-            MIRROR_QUERY_TOKEN, DESTINATION_QUERY_TOKEN
-        ))
-            .expect("Failed to find queries routed to ReadySet");
+                "SELECT digest FROM mysql_query_rules WHERE comment LIKE '{MIRROR_QUERY_TOKEN}%' OR comment LIKE '{DESTINATION_QUERY_TOKEN}%'"
+            ))
+            .expect("Failed to find queries routed to Readyset");
         rows
     }
 
@@ -132,15 +123,15 @@ impl ProxySQL {
     /// # Returns
     ///
     /// A boolean indicating if any mirror query rule was changed to destination.
-    pub fn adjust_mirror_rules(&mut self) -> Result<bool, mysql::Error> {
+    pub fn adjust_mirror_rules(&mut self) -> bool {
         let mut updated_rules = false;
         let datetime_now: DateTime<Local> = Local::now();
         let tz = datetime_now.format("%z").to_string();
         let date_formatted = datetime_now.format("%Y-%m-%d %H:%M:%S");
-        let rows: Vec<(u16, String)> = self.conn.query(format!("SELECT rule_id, comment FROM mysql_query_rules WHERE comment LIKE '{}: ____-__-__ __:__:__';", MIRROR_QUERY_TOKEN)).expect("Failed to select mirror rules");
+        let rows: Vec<(u16, String)> = self.conn.query(format!("SELECT rule_id, comment FROM mysql_query_rules WHERE comment LIKE '{MIRROR_QUERY_TOKEN}: ____-__-__ __:__:__';")).expect("Failed to select mirror rules");
         for (rule_id, comment) in rows {
             let datetime_mirror_str = comment
-                .split("Mirror by readyset scheduler at:")
+                .split(&format!("{MIRROR_QUERY_TOKEN}:"))
                 .nth(1)
                 .unwrap_or("")
                 .trim();
@@ -154,10 +145,7 @@ impl ProxySQL {
                 .signed_duration_since(datetime_mirror_rule)
                 .num_seconds();
             if elapsed > self.warmup_time_s as i64 {
-                let comment = format!(
-                    "{}\n Added by readyset scheduler at: {}",
-                    comment, date_formatted
-                );
+                let comment = format!("{comment}\n {DESTINATION_QUERY_TOKEN}: {date_formatted}");
                 self.conn.query_drop(format!("UPDATE mysql_query_rules SET mirror_hostgroup = NULL, destination_hostgroup = {}, comment = '{}' WHERE rule_id = {}", self.readyset_hostgroup, comment, rule_id)).expect("Failed to update rule");
                 messages::print_note(
                     format!("Updated rule ID {} from warmup to destination", rule_id).as_str(),
@@ -165,66 +153,66 @@ impl ProxySQL {
                 updated_rules = true;
             }
         }
-        Ok(updated_rules)
+        updated_rules
     }
 
-    /// This function is used to check if a given host is healthy.
-    /// This is done by checking if the Readyset host has an active
+    /// This function is used to check if a given Readyset instance is healthy.
+    /// This is done by checking if the Readyset instance has an active
     /// connection and if the snapshot is completed.
     pub fn health_check(&mut self) {
         let mut status_changes = Vec::new();
 
-        for host in self.hosts.iter_mut() {
-            match host.check_readyset_is_ready() {
+        for readyset in self.readysets.iter_mut() {
+            match readyset.check_readyset_is_ready() {
                 Ok(ready) => match ready {
-                    ProxyStatus::Online => {
-                        status_changes.push((host, ProxyStatus::Online));
+                    ProxySQLStatus::Online => {
+                        status_changes.push((readyset, ProxySQLStatus::Online));
                     }
-                    ProxyStatus::Shunned => {
-                        status_changes.push((host, ProxyStatus::Shunned));
+                    ProxySQLStatus::Shunned => {
+                        status_changes.push((readyset, ProxySQLStatus::Shunned));
                     }
-                    ProxyStatus::OfflineSoft => {
-                        status_changes.push((host, ProxyStatus::OfflineSoft));
+                    ProxySQLStatus::OfflineSoft => {
+                        status_changes.push((readyset, ProxySQLStatus::OfflineSoft));
                     }
-                    ProxyStatus::OfflineHard => {
-                        status_changes.push((host, ProxyStatus::OfflineHard));
+                    ProxySQLStatus::OfflineHard => {
+                        status_changes.push((readyset, ProxySQLStatus::OfflineHard));
                     }
                 },
                 Err(e) => {
                     messages::print_error(format!("Cannot check Readyset status: {}.", e).as_str());
-                    status_changes.push((host, ProxyStatus::Shunned));
+                    status_changes.push((readyset, ProxySQLStatus::Shunned));
                 }
             };
         }
 
-        for (host, status) in status_changes {
-            if host.get_proxysql_status() != status {
+        for (readyset, status) in status_changes {
+            if readyset.get_proxysql_status() != status {
                 let where_clause = format!(
                     "WHERE hostgroup_id = {} AND hostname = '{}' AND port = {}",
                     self.readyset_hostgroup,
-                    host.get_hostname(),
-                    host.get_port()
+                    readyset.get_hostname(),
+                    readyset.get_port()
                 );
                 messages::print_note(
                     format!(
-                        "Server HG: {}, Host: {}, Port: {} is currently {} on proxysql and {} on readyset. Changing to {}",
+                        "Server HG: {}, Host: {}, Port: {} is currently {} on ProxySQL and {} on Readyset. Changing to {}",
                         self.readyset_hostgroup,
-                        host.get_hostname(),
-                        host.get_port(),
-                        host.get_proxysql_status(),
-                        host.get_readyset_status().to_string().to_uppercase(),
+                        readyset.get_hostname(),
+                        readyset.get_port(),
+                        readyset.get_proxysql_status(),
+                        readyset.get_readyset_status().to_string().to_uppercase(),
                         status
                     )
                     .as_str(),
                 );
-                host.change_proxysql_status(status);
+                readyset.change_proxysql_status(status);
                 if self.dry_run {
                     messages::print_info("Dry run, skipping changes to ProxySQL");
                     continue;
                 }
                 let _ = self.conn.query_drop(format!(
                     "UPDATE mysql_servers SET status = '{}' {}",
-                    host.get_proxysql_status(),
+                    readyset.get_proxysql_status(),
                     where_clause
                 ));
                 let _ = self.conn.query_drop("LOAD MYSQL SERVERS TO RUNTIME");
@@ -233,40 +221,42 @@ impl ProxySQL {
         }
     }
 
-    /// This function is used to get the number of online hosts.
-    /// This is done by filtering the hosts vector and counting the number of hosts with status Online.
+    /// This function is used to get the number of online Readyset instances.
+    /// This is done by filtering the readysets vector and counting the number of Readyset instances with status Online.
     ///
     /// # Returns
     ///
-    /// A u16 containing the number of online hosts.
-    pub fn number_of_online_hosts(&self) -> u16 {
-        self.hosts
+    /// A u16 containing the number of online Readyset instances.
+    pub fn number_of_online_readyset_instances(&self) -> u16 {
+        self.readysets
             .iter()
-            .filter(|host| host.is_proxysql_online())
-            .collect::<Vec<&Host>>()
+            .filter(|readyset| readyset.is_proxysql_online())
+            .collect::<Vec<&Readyset>>()
             .len() as u16
     }
 
-    /// This function is used to get the first online host.
-    /// This is done by iterating over the hosts vector and returning the first host with status Online.
+    /// This function is used to get the first online Readyset instance.
+    /// This is done by iterating over the readysets vector and returning the first instance with status Online.
     ///
     /// # Returns
     ///
-    /// An Option containing a reference to the first online host.
-    pub fn get_first_online_host(&mut self) -> Option<&mut Host> {
-        self.hosts.iter_mut().find(|host| host.is_proxysql_online())
+    /// An Option containing a reference to the first online Readyset instance.
+    pub fn get_first_online_readyset(&mut self) -> Option<&mut Readyset> {
+        self.readysets
+            .iter_mut()
+            .find(|readyset| readyset.is_proxysql_online())
     }
 
-    /// This function is used to get all the online hosts.
-    /// This is done by filtering the hosts vector and collecting the hosts with status Online.
+    /// This function is used to get all the online Readyset instances.
+    /// This is done by filtering the readysets vector and collecting the instance with status Online.
     ///
     /// # Returns
     ///
-    /// A vector containing references to the online hosts.
-    pub fn get_online_hosts(&mut self) -> Vec<&mut Host> {
-        self.hosts
+    /// A vector containing references to the online Readyset instances.
+    pub fn get_online_readyset_instances(&mut self) -> Vec<&mut Readyset> {
+        self.readysets
             .iter_mut()
-            .filter(|host| host.is_proxysql_online())
+            .filter(|readyset| readyset.is_proxysql_online())
             .collect()
     }
 }

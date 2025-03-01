@@ -1,8 +1,8 @@
 mod config;
-mod hosts;
 mod messages;
 mod proxysql;
 mod queries;
+mod readyset;
 
 use clap::Parser;
 use config::read_config_file;
@@ -13,7 +13,7 @@ use proxysql::ProxySQL;
 use std::fs::OpenOptions;
 
 /// Readyset ProxySQL Scheduler
-/// This tool is used to query ProxySQL Stats tables to find queries that are not yet cached in Readyset and then cache them.
+/// This tool is used to query ProxySQL stats tables to find queries that are not yet cached in Readyset and then cache them.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -79,8 +79,6 @@ fn main() {
         proxysql.health_check();
     }
 
-    // retain only healthy hosts
-    //hosts.retain_online();
     if running_mode == config::OperationMode::QueryDiscovery
         || running_mode == config::OperationMode::All
     {
@@ -93,7 +91,7 @@ fn main() {
                 .prefer_socket(false),
         )
         .expect("Failed to create ProxySQL connection");
-        let mut query_discovery = queries::QueryDiscovery::new(config);
+        let mut query_discovery = queries::QueryDiscovery::new(&config);
         query_discovery.run(&mut proxysql, &mut conn);
     }
 

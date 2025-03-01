@@ -3,10 +3,9 @@ use core::fmt;
 use mysql::{prelude::Queryable, Conn, OptsBuilder};
 use std::time::Duration;
 
-#[allow(dead_code)]
-/// Defines the possible status of a host
+/// Defines the possible status of a Readyset instance
 #[derive(PartialEq, Clone, Copy)]
-pub enum ProxyStatus {
+pub enum ProxySQLStatus {
     /// backend server is fully operational
     Online,
     /// backend sever is temporarily taken out of use because of either too many connection errors in a time that was too short, or the replication lag exceeded the allowed threshold
@@ -17,36 +16,36 @@ pub enum ProxyStatus {
     OfflineHard,
 }
 
-impl fmt::Display for ProxyStatus {
+impl fmt::Display for ProxySQLStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ProxyStatus::Online => write!(f, "ONLINE"),
-            ProxyStatus::Shunned => write!(f, "SHUNNED"),
-            ProxyStatus::OfflineSoft => write!(f, "OFFLINE_SOFT"),
-            ProxyStatus::OfflineHard => write!(f, "OFFLINE_HARD"),
+            ProxySQLStatus::Online => write!(f, "ONLINE"),
+            ProxySQLStatus::Shunned => write!(f, "SHUNNED"),
+            ProxySQLStatus::OfflineSoft => write!(f, "OFFLINE_SOFT"),
+            ProxySQLStatus::OfflineHard => write!(f, "OFFLINE_HARD"),
         }
     }
 }
 
-impl From<String> for ProxyStatus {
+impl From<String> for ProxySQLStatus {
     fn from(s: String) -> Self {
         match s.to_uppercase().as_str() {
-            "ONLINE" => ProxyStatus::Online,
-            "SHUNNED" => ProxyStatus::Shunned,
-            "OFFLINE_SOFT" => ProxyStatus::OfflineSoft,
-            "OFFLINE_HARD" => ProxyStatus::OfflineHard,
-            _ => ProxyStatus::Online,
+            "ONLINE" => ProxySQLStatus::Online,
+            "SHUNNED" => ProxySQLStatus::Shunned,
+            "OFFLINE_SOFT" => ProxySQLStatus::OfflineSoft,
+            "OFFLINE_HARD" => ProxySQLStatus::OfflineHard,
+            _ => ProxySQLStatus::Online,
         }
     }
 }
 
-impl From<ReadysetStatus> for ProxyStatus {
+impl From<ReadysetStatus> for ProxySQLStatus {
     fn from(status: ReadysetStatus) -> Self {
         match status {
-            ReadysetStatus::Online => ProxyStatus::Online,
-            ReadysetStatus::SnapshotInProgress => ProxyStatus::Shunned,
-            ReadysetStatus::Maintenance => ProxyStatus::OfflineSoft,
-            ReadysetStatus::Unknown => ProxyStatus::Shunned,
+            ReadysetStatus::Online => ProxySQLStatus::Online,
+            ReadysetStatus::SnapshotInProgress => ProxySQLStatus::Shunned,
+            ReadysetStatus::Maintenance => ProxySQLStatus::OfflineSoft,
+            ReadysetStatus::Unknown => ProxySQLStatus::Shunned,
         }
     }
 }
@@ -81,30 +80,32 @@ impl From<String> for ReadysetStatus {
     }
 }
 
-/// Represents a Readyset host
-pub struct Host {
+/// Represents a Readyset instance
+pub struct Readyset {
     hostname: String,
     port: u16,
-    proxysql_status: ProxyStatus,
+    proxysql_status: ProxySQLStatus,
     readyset_status: ReadysetStatus,
     conn: Option<Conn>,
 }
 
-impl Host {
-    /// Creates a new `Host` instance with the given hostname and port.
-    /// The connection to the host is established during the creation of the instance.
+impl Readyset {
+    /// Creates a new `Readyset` instance with the given hostname and port.
+    /// The connection to the Readyset instance is established during the creation of the instance.
     /// If the connection fails, the `conn` field will be `None`.
     /// If the connection is successful, the `conn` field will contain the connection.
     ///
     /// # Arguments
     ///
-    /// * `hostname` - The hostname of the host.
-    /// * `port` - The port number of the host.
+    /// * `hostname` - The hostname of the Readyset instance.
+    /// * `port` - The port number of the Readyset instance.
+    /// * `proxysql_status` - The ProxySQL status of the Readyset instance.
+    /// * `config` - The config for this instance of the scheduler.
     ///
     /// # Returns
     ///
-    /// A new `Host` instance.
-    pub fn new(hostname: String, port: u16, proxysql_status: String, config: &Config) -> Host {
+    /// A new `Readyset` instance.
+    pub fn new(hostname: String, port: u16, proxysql_status: String, config: &Config) -> Readyset {
         let conn = match Conn::new(
             OptsBuilder::new()
                 .ip_or_hostname(Some(hostname.clone()))
@@ -119,86 +120,86 @@ impl Host {
             Ok(conn) => conn,
             Err(err) => {
                 eprintln!("Failed to establish connection: {}", err);
-                return Host {
+                return Readyset {
                     hostname,
                     port,
-                    proxysql_status: ProxyStatus::from(proxysql_status),
+                    proxysql_status: ProxySQLStatus::from(proxysql_status),
                     readyset_status: ReadysetStatus::Unknown,
                     conn: None,
                 };
             }
         };
 
-        Host {
+        Readyset {
             hostname,
             port,
-            proxysql_status: ProxyStatus::from(proxysql_status),
+            proxysql_status: ProxySQLStatus::from(proxysql_status),
             readyset_status: ReadysetStatus::Unknown,
             conn: Some(conn),
         }
     }
 
-    /// Gets the hostname of the host.
+    /// Gets the hostname of the Readyset instance.
     ///
     /// # Returns
     ///
-    /// The hostname of the host.
+    /// The hostname of the Readyset instance.
     pub fn get_hostname(&self) -> &String {
         &self.hostname
     }
 
-    /// Gets the port of the host.
+    /// Gets the port of the Readyset instance.
     ///
     /// # Returns
     ///
-    /// The port of the host.
+    /// The port of the Readyset instance.
     pub fn get_port(&self) -> u16 {
         self.port
     }
 
-    /// Gets the proxysql status of the host.
+    /// Gets the ProxySQL status of the Readyset instance.
     ///
     /// # Returns
     ///
-    /// The status of the host.
-    pub fn get_proxysql_status(&self) -> ProxyStatus {
+    /// The ProxySQL status of the Readyset instance.
+    pub fn get_proxysql_status(&self) -> ProxySQLStatus {
         self.proxysql_status
     }
 
-    /// Changes the proxysql status of the host.
+    /// Changes the ProxySQL status of the Readyset instance.
     ///
     /// # Arguments
     ///
-    /// * `status` - The new status of the host.
-    pub fn change_proxysql_status(&mut self, status: ProxyStatus) {
+    /// * `status` - The new ProxySQL status of the Readyset instance.
+    pub fn change_proxysql_status(&mut self, status: ProxySQLStatus) {
         self.proxysql_status = status;
     }
 
-    /// Checks if the host is online in proxysql.
+    /// Checks if the Readyset instance is online in ProxySQL.
     ///
     /// # Returns
     ///
-    /// true if the host is online, false otherwise.
+    /// true if the Readyset instance is online, false otherwise.
     pub fn is_proxysql_online(&self) -> bool {
-        self.proxysql_status == ProxyStatus::Online
+        self.proxysql_status == ProxySQLStatus::Online
     }
 
-    /// Gets the readyset status of the host.
+    /// Gets the Readyset status of the Readyset instance.
     ///
     /// # Returns
     ///
-    /// The status of the host.
+    /// The Readyset status of the Readyset instance.
     pub fn get_readyset_status(&self) -> ReadysetStatus {
         self.readyset_status
     }
 
-    /// Checks if the Readyset host is ready to serve traffic.
+    /// Checks if the Readyset instance is ready to serve traffic.
     /// This is done by querying the SHOW READYSET STATUS command.
     ///
     /// # Returns
     ///
-    /// true if the host is ready, false otherwise.
-    pub fn check_readyset_is_ready(&mut self) -> Result<ProxyStatus, mysql::Error> {
+    /// true if the instance is ready, false otherwise.
+    pub fn check_readyset_is_ready(&mut self) -> Result<ProxySQLStatus, mysql::Error> {
         match &mut self.conn {
             Some(conn) => {
                 let result = conn.query("SHOW READYSET STATUS");
@@ -208,10 +209,10 @@ impl Host {
                         for (field, value) in rows {
                             if field == "Snapshot Status" && value == "Completed" {
                                 self.readyset_status = ReadysetStatus::Online;
-                                return Ok(ProxyStatus::Online);
+                                return Ok(ProxySQLStatus::Online);
                             } else if field == "Snapshot Status" && value == "In Progress" {
                                 self.readyset_status = ReadysetStatus::SnapshotInProgress;
-                                return Ok(ProxyStatus::Shunned);
+                                return Ok(ProxySQLStatus::Shunned);
                             } else if field == "Status" {
                                 let status = ReadysetStatus::from(value);
                                 self.readyset_status = status;
@@ -219,7 +220,7 @@ impl Host {
                             }
                         }
                         self.readyset_status = ReadysetStatus::Unknown;
-                        Ok(ProxyStatus::Shunned)
+                        Ok(ProxySQLStatus::Shunned)
                     }
                     Err(err) => Err(mysql::Error::IoError(std::io::Error::new(
                         std::io::ErrorKind::Other,
@@ -229,12 +230,12 @@ impl Host {
             }
             None => Err(mysql::Error::IoError(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                "Connection to Readyset host is not established",
+                "Connection to Readyset instance is not established",
             ))),
         }
     }
 
-    /// Checks if the host supports the given query.
+    /// Checks if the Readyset instance supports the given query.
     /// This is done by querying the EXPLAIN CREATE CACHE FROM command.
     ///
     /// # Arguments
@@ -244,7 +245,7 @@ impl Host {
     ///
     /// # Returns
     ///
-    /// true if the host supports the query, false otherwise.
+    /// true if the instance supports the query, false otherwise.
     pub fn check_query_support(
         &mut self,
         digest_text: &String,
@@ -265,22 +266,18 @@ impl Host {
         }
     }
 
-    /// Caches the given query on the host.
+    /// Caches the given query on the Readyset instance.
     /// This is done by executing the CREATE CACHE FROM command.
     ///
     /// # Arguments
     ///
-    /// * `digest_text` - The digest text of the query.
-    ///
-    /// # Returns
-    ///
-    /// true if the query was cached successfully, false otherwise.
-    pub fn cache_query(&mut self, query: &Query) -> Result<bool, mysql::Error> {
+    /// * `query` - The query to cache.
+    pub fn cache_query(&mut self, query: &Query) -> Result<(), mysql::Error> {
         match &mut self.conn {
             None => {
                 return Err(mysql::Error::IoError(std::io::Error::new(
                     std::io::ErrorKind::Other,
-                    "Connection to Readyset host is not established",
+                    "Connection to Readyset instance is not established",
                 )))
             }
             Some(conn) => {
@@ -292,6 +289,6 @@ impl Host {
                 ))?;
             }
         }
-        Ok(true)
+        Ok(())
     }
 }

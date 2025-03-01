@@ -2,9 +2,10 @@ use std::process;
 
 use chrono::{DateTime, Local};
 use once_cell::sync::Lazy;
+use serde::Deserialize;
 use std::sync::Mutex;
 
-#[derive(Clone, Copy, serde::Deserialize, Debug, Default, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Deserialize, Debug, Default, PartialEq, PartialOrd)]
 pub enum MessageType {
     /// Information message, this will not result in any action
     Info,

@@ -37,6 +37,7 @@ impl Query {
     /// This function is used to get the digest text of the query.
     ///
     /// # Returns
+    ///
     /// A string containing the digest text of the query.
     pub fn get_digest_text(&self) -> &String {
         &self.digest_text
@@ -81,21 +82,19 @@ pub struct QueryDiscovery {
 }
 
 /// Query Discovery is a feature responsible for discovering queries that are hurting the database performance.
-/// The queries are discovered by analyzing the stats_mysql_query_digest table and finding queries that are not cached in ReadySet and are not in the mysql_query_rules table.
+/// The queries are discovered by analyzing the stats_mysql_query_digest table and finding queries that are not cached in Readyset and are not in the mysql_query_rules table.
 /// The query discover is also responsible for promoting the queries from mirror(warmup) to destination.
 impl QueryDiscovery {
     /// This function is used to create a new QueryDiscovery struct.
     ///
     /// # Arguments
     ///
-    /// * `query_discovery_mode` - A QueryDiscoveryMode containing the mode to use for query discovery.
-    /// * `config` - A Config containing the configuration for the query discovery.
-    /// * `offset` - A u16 containing the offset to use for query discovery.
+    /// * `config` - The config for this instance of the scheduler.
     ///
     /// # Returns
     ///
     /// A new QueryDiscovery struct.
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: &Config) -> Self {
         QueryDiscovery {
             query_discovery_mode: config
                 .query_discovery_mode
@@ -109,16 +108,12 @@ impl QueryDiscovery {
         }
     }
 
-    /// This function is used to generate the query responsible for finding queries that are not cached in ReadySet and are not in the mysql_query_rules table.
+    /// This function is used to generate the query responsible for finding queries that are not cached in Readyset and are not in the mysql_query_rules table.
     /// Queries have to return 3 fields: digest_text, digest, and schema name.
-    ///
-    /// # Arguments
-    ///
-    /// * `query_discovery_mode` - A QueryDiscoveryMode containing the mode to use for query discovery.
     ///
     /// # Returns
     ///
-    /// A string containing the query responsible for finding queries that are not cached in ReadySet and are not in the mysql_query_rules table.
+    /// A string containing the query responsible for finding queries that are not cached in Readyset and are not in the mysql_query_rules table.
     fn query_builder(&self) -> String {
         let order_by = match self.query_discovery_mode {
             QueryDiscoveryMode::SumRowsSent => "s.sum_rows_sent".to_string(),
@@ -137,19 +132,19 @@ impl QueryDiscovery {
 
         format!(
             "SELECT s.digest_text, s.digest, s.schemaname
-    FROM stats_mysql_query_digest s 
-    LEFT JOIN mysql_query_rules q 
-    USING(digest) 
-    WHERE s.hostgroup = {}
-    AND s.username = '{}'
-    AND s.schemaname NOT IN ('sys', 'information_schema', 'performance_schema', 'mysql')
-    AND s.digest_text LIKE 'SELECT%FROM%'
-    AND digest_text NOT LIKE '%?=?%'
-    AND s.count_star > {}
-    AND s.sum_rows_sent > {}
-    AND q.rule_id IS NULL
-    ORDER BY {} DESC
-    LIMIT {} OFFSET {}",
+             FROM stats_mysql_query_digest s
+             LEFT JOIN mysql_query_rules q
+             USING(digest)
+             WHERE s.hostgroup = {}
+             AND s.username = '{}'
+             AND s.schemaname NOT IN ('sys', 'information_schema', 'performance_schema', 'mysql')
+             AND s.digest_text LIKE 'SELECT%FROM%'
+             AND digest_text NOT LIKE '%?=?%'
+             AND s.count_star > {}
+             AND s.sum_rows_sent > {}
+             AND q.rule_id IS NULL
+             ORDER BY {} DESC
+             LIMIT {} OFFSET {}",
             self.source_hostgroup,
             self.readyset_user,
             self.query_discovery_min_execution,
@@ -161,11 +156,11 @@ impl QueryDiscovery {
     }
 
     pub fn run(&mut self, proxysql: &mut ProxySQL, conn: &mut Conn) {
-        if proxysql.number_of_online_hosts() == 0 {
+        if proxysql.number_of_online_readyset_instances() == 0 {
             return;
         }
 
-        let mut queries_added_or_change = proxysql.adjust_mirror_rules().unwrap();
+        let mut queries_added_or_change = proxysql.adjust_mirror_rules();
 
         let mut current_queries_digest: Vec<String> = proxysql.find_queries_routed_to_readyset();
 
@@ -182,30 +177,31 @@ impl QueryDiscovery {
                     format!("Going to test query support for {}", digest_text).as_str(),
                 );
                 let supported = proxysql
-                    .get_first_online_host()
+                    .get_first_online_readyset()
                     .unwrap()
-                    .check_query_support(&digest_text, query.get_schema()); // Safe to unwrap because we checked if hosts is empty
+                    .check_query_support(&digest_text, query.get_schema()); // Safe to unwrap because we checked if readysets is empty
                 match supported {
                     Ok(true) => {
                         messages::print_note(
-                            "Query is supported, adding it to proxysql and readyset"
+                            "Query is supported, adding it to ProxySQL and Readyset"
                                 .to_string()
                                 .as_str(),
                         );
                         queries_added_or_change = true;
                         if !proxysql.dry_run() {
-                            proxysql.get_online_hosts().iter_mut().for_each(|host| {
-                                host.cache_query(query).unwrap_or_else(|_| {
-                                    panic!(
-                                        "Failed to create readyset cache on host {}:{}",
-                                        host.get_hostname(),
-                                        host.get_port()
-                                    )
-                                });
-                            });
                             proxysql
-                                .add_as_query_rule(query)
-                                .expect("Failed to add query rule");
+                                .get_online_readyset_instances()
+                                .iter_mut()
+                                .for_each(|readyset| {
+                                    readyset.cache_query(query).unwrap_or_else(|_| {
+                                        panic!(
+                                            "Failed to create Readyset cache on host {}:{}",
+                                            readyset.get_hostname(),
+                                            readyset.get_port()
+                                        )
+                                    });
+                                });
+                            proxysql.add_as_query_rule(query);
                         } else {
                             messages::print_info("Dry run, not adding query");
                         }
@@ -224,24 +220,21 @@ impl QueryDiscovery {
             self.offset += queries_to_cache.len() as u16;
         }
         if queries_added_or_change {
-            proxysql
-                .load_query_rules()
-                .expect("Failed to load query rules");
-            proxysql
-                .save_query_rules()
-                .expect("Failed to save query rules");
+            proxysql.load_query_rules();
+            proxysql.save_query_rules();
         }
     }
 
-    /// This function is used to find queries that are not cached in ReadySet and are not in the mysql_query_rules table.
+    /// This function is used to find queries that are not cached in Readyset and are not in the mysql_query_rules table.
     ///
     /// # Arguments
+    ///
     /// * `conn` - A reference to a connection to ProxySQL.
-    /// * `config` - A reference to the configuration struct.
     ///
     /// # Returns
-    /// A vector of tuples containing the digest_text, digest, and schema name of the queries that are not cached in ReadySet and are not in the mysql_query_rules table.
-    fn find_queries_to_cache(&self, con: &mut Conn) -> Vec<Query> {
+    ///
+    /// A vector of queries that are not cached in Readyset and are not in the mysql_query_rules table.
+    fn find_queries_to_cache(&self, conn: &mut Conn) -> Vec<Query> {
         match self.query_discovery_mode {
             QueryDiscoveryMode::External => {
                 todo!("External mode is not implemented yet");
@@ -249,7 +242,7 @@ impl QueryDiscovery {
             _ => {
                 let query = self.query_builder();
                 let rows: Vec<(String, String, String)> =
-                    con.query(query).expect("Failed to find queries to cache");
+                    conn.query(query).expect("Failed to find queries to cache");
                 rows.iter()
                     .map(|(digest_text, digest, schema)| {
                         Query::new(
