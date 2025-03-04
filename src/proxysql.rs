@@ -104,6 +104,33 @@ impl ProxySQL {
             .expect("Failed to save query rules");
     }
 
+    pub fn update_servers(
+        &mut self,
+        hostgroup: u16,
+        hostname: &str,
+        port: u16,
+        new_status: ProxySQLStatus,
+    ) {
+        self.conn
+            .query_drop(format!(
+                "UPDATE mysql_servers SET status = '{new_status}'
+                 WHERE hostgroup_id = {hostgroup} AND hostname = '{hostname}' AND port = {port}"
+            ))
+            .expect("Failed to update servers");
+    }
+
+    pub fn load_servers(&mut self) {
+        self.conn
+            .query_drop("LOAD MYSQL SERVERS TO RUNTIME")
+            .expect("Failed to load servers");
+    }
+
+    pub fn save_servers(&mut self) {
+        self.conn
+            .query_drop("SAVE MYSQL SERVERS TO DISK")
+            .expect("Failed to save servers");
+    }
+
     /// This function is used to check the current list of queries routed to Readyset.
     ///
     /// # Returns
@@ -162,37 +189,32 @@ impl ProxySQL {
     pub fn health_check(&mut self) {
         let mut status_changes = Vec::new();
 
-        for readyset in self.readysets.iter_mut() {
+        for (readyset_idx, readyset) in self.readysets.iter_mut().enumerate() {
             match readyset.check_readyset_is_ready() {
                 Ok(ready) => match ready {
                     ProxySQLStatus::Online => {
-                        status_changes.push((readyset, ProxySQLStatus::Online));
+                        status_changes.push((readyset_idx, ProxySQLStatus::Online));
                     }
                     ProxySQLStatus::Shunned => {
-                        status_changes.push((readyset, ProxySQLStatus::Shunned));
+                        status_changes.push((readyset_idx, ProxySQLStatus::Shunned));
                     }
                     ProxySQLStatus::OfflineSoft => {
-                        status_changes.push((readyset, ProxySQLStatus::OfflineSoft));
+                        status_changes.push((readyset_idx, ProxySQLStatus::OfflineSoft));
                     }
                     ProxySQLStatus::OfflineHard => {
-                        status_changes.push((readyset, ProxySQLStatus::OfflineHard));
+                        status_changes.push((readyset_idx, ProxySQLStatus::OfflineHard));
                     }
                 },
                 Err(e) => {
                     messages::print_error(format!("Cannot check Readyset status: {}.", e).as_str());
-                    status_changes.push((readyset, ProxySQLStatus::Shunned));
+                    status_changes.push((readyset_idx, ProxySQLStatus::Shunned));
                 }
             };
         }
 
-        for (readyset, status) in status_changes {
+        for (readyset_idx, status) in status_changes {
+            let readyset = self.readysets.get(readyset_idx).unwrap();
             if readyset.get_proxysql_status() != status {
-                let where_clause = format!(
-                    "WHERE hostgroup_id = {} AND hostname = '{}' AND port = {}",
-                    self.readyset_hostgroup,
-                    readyset.get_hostname(),
-                    readyset.get_port()
-                );
                 messages::print_note(
                     format!(
                         "Server HG: {}, Host: {}, Port: {} is currently {} on ProxySQL and {} on Readyset. Changing to {}",
@@ -205,19 +227,22 @@ impl ProxySQL {
                     )
                     .as_str(),
                 );
-                readyset.change_proxysql_status(status);
-                if self.dry_run {
-                    messages::print_info("Dry run, skipping changes to ProxySQL");
-                    continue;
-                }
-                let _ = self.conn.query_drop(format!(
-                    "UPDATE mysql_servers SET status = '{}' {}",
-                    readyset.get_proxysql_status(),
-                    where_clause
-                ));
-                let _ = self.conn.query_drop("LOAD MYSQL SERVERS TO RUNTIME");
-                let _ = self.conn.query_drop("SAVE MYSQL SERVERS TO DISK");
             }
+            let readyset = self.readysets.get_mut(readyset_idx).unwrap();
+            readyset.change_proxysql_status(status);
+            if self.dry_run {
+                messages::print_info("Dry run, skipping changes to ProxySQL");
+                continue;
+            }
+            let readyset = self.readysets.get(readyset_idx).unwrap();
+            self.update_servers(
+                self.readyset_hostgroup,
+                readyset.get_hostname().clone().as_str(),
+                readyset.get_port(),
+                readyset.get_proxysql_status(),
+            );
+            self.load_servers();
+            self.save_servers();
         }
     }
 
@@ -258,5 +283,10 @@ impl ProxySQL {
             .iter_mut()
             .filter(|readyset| readyset.is_proxysql_online())
             .collect()
+    }
+
+    /// Returns a reference to the current connection to ProxySQL.
+    pub fn get_connection(&mut self) -> &mut Conn {
+        &mut self.conn
     }
 }

@@ -7,7 +7,6 @@ mod readyset;
 use clap::Parser;
 use config::{read_config_file, OperationMode};
 use file_guard::Lock;
-use mysql::{Conn, OptsBuilder};
 use proxysql::ProxySQL;
 use std::fs::OpenOptions;
 
@@ -65,17 +64,8 @@ fn main() {
     if config.operation_mode == OperationMode::QueryDiscovery
         || config.operation_mode == OperationMode::All
     {
-        let mut conn = Conn::new(
-            OptsBuilder::new()
-                .ip_or_hostname(Some(config.proxysql_host.as_str()))
-                .tcp_port(config.proxysql_port)
-                .user(Some(config.proxysql_user.as_str()))
-                .pass(Some(config.proxysql_password.clone().as_str()))
-                .prefer_socket(false),
-        )
-        .expect("Failed to create ProxySQL connection");
         let mut query_discovery = queries::QueryDiscovery::new(&config);
-        query_discovery.run(&mut proxysql, &mut conn);
+        query_discovery.run(&mut proxysql);
     }
 
     messages::print_info("Finished readyset_scheduler");

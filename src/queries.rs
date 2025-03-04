@@ -3,7 +3,7 @@ use crate::{
     messages,
     proxysql::ProxySQL,
 };
-use mysql::{prelude::Queryable, Conn};
+use mysql::prelude::Queryable;
 
 pub struct Query {
     digest_text: String,
@@ -153,7 +153,7 @@ impl QueryDiscovery {
         )
     }
 
-    pub fn run(&mut self, proxysql: &mut ProxySQL, conn: &mut Conn) {
+    pub fn run(&mut self, proxysql: &mut ProxySQL) {
         if proxysql.number_of_online_readyset_instances() == 0 {
             return;
         }
@@ -164,7 +164,7 @@ impl QueryDiscovery {
 
         let mut more_queries = true;
         while more_queries && current_queries_digest.len() < self.number_of_queries as usize {
-            let queries_to_cache = self.find_queries_to_cache(conn);
+            let queries_to_cache = self.find_queries_to_cache(proxysql);
             more_queries = !queries_to_cache.is_empty();
             for query in queries_to_cache[0..queries_to_cache.len()].iter() {
                 if current_queries_digest.len() > self.number_of_queries as usize {
@@ -227,17 +227,18 @@ impl QueryDiscovery {
     ///
     /// # Arguments
     ///
-    /// * `conn` - A reference to a connection to ProxySQL.
+    /// * `proxysql` - A reference to ProxySQL.
     ///
     /// # Returns
     ///
     /// A vector of queries that are not cached in Readyset and are not in the mysql_query_rules table.
-    fn find_queries_to_cache(&self, conn: &mut Conn) -> Vec<Query> {
+    fn find_queries_to_cache(&self, proxysql: &mut ProxySQL) -> Vec<Query> {
         match self.query_discovery_mode {
             QueryDiscoveryMode::External => {
                 todo!("External mode is not implemented yet");
             }
             _ => {
+                let conn = proxysql.get_connection();
                 let query = self.query_builder();
                 let rows: Vec<(String, String, String)> =
                     conn.query(query).expect("Failed to find queries to cache");
