@@ -51,6 +51,14 @@ pub enum QueryDiscoveryMode {
     External,
 }
 
+fn default_lock_file() -> String {
+    "/tmp/readyset_scheduler.lock".to_string()
+}
+
+fn default_number_of_queries() -> u16 {
+    10
+}
+
 #[derive(Deserialize, Clone, Debug)]
 pub struct Config {
     pub proxysql_user: String,
@@ -61,14 +69,22 @@ pub struct Config {
     pub readyset_password: String,
     pub source_hostgroup: u16,
     pub readyset_hostgroup: u16,
-    pub warmup_time_s: Option<u16>,
-    pub lock_file: Option<String>,
-    pub operation_mode: Option<OperationMode>,
+    #[serde(default)]
+    pub warmup_time_s: u16,
+    #[serde(default = "default_lock_file")]
+    pub lock_file: String,
+    #[serde(default)]
+    pub operation_mode: OperationMode,
+    #[serde(default = "default_number_of_queries")]
     pub number_of_queries: u16,
-    pub query_discovery_mode: Option<QueryDiscoveryMode>,
-    pub query_discovery_min_execution: Option<u64>,
-    pub query_discovery_min_row_sent: Option<u64>,
-    pub log_verbosity: Option<MessageType>,
+    #[serde(default)]
+    pub query_discovery_mode: QueryDiscoveryMode,
+    #[serde(default)]
+    pub query_discovery_min_execution: u64,
+    #[serde(default)]
+    pub query_discovery_min_row_sent: u64,
+    #[serde(default)]
+    pub log_verbosity: MessageType,
 }
 
 pub fn read_config_file(path: &str) -> Result<String, std::io::Error> {

@@ -60,7 +60,7 @@ impl ProxySQL {
         ProxySQL {
             conn,
             readyset_hostgroup: config.readyset_hostgroup,
-            warmup_time_s: config.warmup_time_s.unwrap_or(0),
+            warmup_time_s: config.warmup_time_s,
             readysets,
             dry_run,
         }

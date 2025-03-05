@@ -5,9 +5,8 @@ mod queries;
 mod readyset;
 
 use clap::Parser;
-use config::read_config_file;
+use config::{read_config_file, OperationMode};
 use file_guard::Lock;
-use messages::MessageType;
 use mysql::{Conn, OptsBuilder};
 use proxysql::ProxySQL;
 use std::fs::OpenOptions;
@@ -29,30 +28,19 @@ fn main() {
     let args = Args::parse();
     let config_file = read_config_file(&args.config).expect("Failed to read config file");
     let config = config::parse_config_file(&config_file).expect("Failed to parse config file");
-    messages::set_log_verbosity(config.clone().log_verbosity.unwrap_or(MessageType::Note));
+    messages::set_log_verbosity(config.log_verbosity);
     messages::print_info("Running readyset_scheduler");
     let file = match OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(true)
-        .open(
-            config
-                .clone()
-                .lock_file
-                .unwrap_or("/tmp/readyset_scheduler.lock".to_string()),
-        ) {
+        .open(&config.lock_file)
+    {
         Ok(file) => file,
         Err(err) => {
             messages::print_error(
-                format!(
-                    "Failed to open lock file {}: {}",
-                    config
-                        .lock_file
-                        .unwrap_or("/tmp/readyset_scheduler.lock".to_string()),
-                    err
-                )
-                .as_str(),
+                format!("Failed to open lock file {}: {}", config.lock_file, err).as_str(),
             );
             std::process::exit(1);
         }
@@ -68,19 +56,14 @@ fn main() {
 
     let mut proxysql = ProxySQL::new(&config, args.dry_run);
 
-    let running_mode = match config.operation_mode {
-        Some(mode) => mode,
-        None => config::OperationMode::All,
-    };
-
-    if running_mode == config::OperationMode::HealthCheck
-        || running_mode == config::OperationMode::All
+    if config.operation_mode == OperationMode::HealthCheck
+        || config.operation_mode == OperationMode::All
     {
         proxysql.health_check();
     }
 
-    if running_mode == config::OperationMode::QueryDiscovery
-        || running_mode == config::OperationMode::All
+    if config.operation_mode == OperationMode::QueryDiscovery
+        || config.operation_mode == OperationMode::All
     {
         let mut conn = Conn::new(
             OptsBuilder::new()

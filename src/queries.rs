@@ -96,11 +96,9 @@ impl QueryDiscovery {
     /// A new QueryDiscovery struct.
     pub fn new(config: &Config) -> Self {
         QueryDiscovery {
-            query_discovery_mode: config
-                .query_discovery_mode
-                .unwrap_or(QueryDiscoveryMode::CountStar),
-            query_discovery_min_execution: config.query_discovery_min_execution.unwrap_or(0),
-            query_discovery_min_rows_sent: config.query_discovery_min_row_sent.unwrap_or(0),
+            query_discovery_mode: config.query_discovery_mode,
+            query_discovery_min_execution: config.query_discovery_min_execution,
+            query_discovery_min_rows_sent: config.query_discovery_min_row_sent,
             source_hostgroup: config.source_hostgroup,
             readyset_user: config.readyset_user.clone(),
             number_of_queries: config.number_of_queries,
