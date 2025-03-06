@@ -1,9 +1,8 @@
 use crate::{
-    config::{Config, QueryDiscoveryMode},
+    config::{Config, DatabaseType, QueryDiscoveryMode},
     messages,
     proxysql::ProxySQL,
 };
-use mysql::prelude::Queryable;
 
 pub struct Query {
     digest_text: String,
@@ -72,6 +71,7 @@ impl Query {
 }
 
 pub struct QueryDiscovery {
+    database_type: DatabaseType,
     query_discovery_mode: QueryDiscoveryMode,
     query_discovery_min_execution: u64,
     query_discovery_min_rows_sent: u64,
@@ -81,9 +81,13 @@ pub struct QueryDiscovery {
     offset: u16,
 }
 
-/// Query Discovery is a feature responsible for discovering queries that are hurting the database performance.
-/// The queries are discovered by analyzing the stats_mysql_query_digest table and finding queries that are not cached in Readyset and are not in the mysql_query_rules table.
-/// The query discover is also responsible for promoting the queries from mirror(warmup) to destination.
+/// Query Discovery is a feature responsible for discovering queries that are hurting the database
+/// performance.
+///
+/// For MySQL, the queries are discovered by analyzing the stats_mysql_query_digest table and
+/// finding queries that are not cached in Readyset and are not in the mysql_query_rules table.
+/// The query discover is also responsible for promoting the queries from mirror(warmup) to
+/// destination.
 impl QueryDiscovery {
     /// This function is used to create a new QueryDiscovery struct.
     ///
@@ -96,6 +100,7 @@ impl QueryDiscovery {
     /// A new QueryDiscovery struct.
     pub fn new(config: &Config) -> Self {
         QueryDiscovery {
+            database_type: config.database_type,
             query_discovery_mode: config.query_discovery_mode,
             query_discovery_min_execution: config.query_discovery_min_execution,
             query_discovery_min_rows_sent: config.query_discovery_min_row_sent,
@@ -106,13 +111,19 @@ impl QueryDiscovery {
         }
     }
 
-    /// This function is used to generate the query responsible for finding queries that are not cached in Readyset and are not in the mysql_query_rules table.
+    /// This function is used to generate the query responsible for finding queries that are not
+    /// cached in Readyset and are not in the ProxySQL's query rules  table.
+    ///
     /// Queries have to return 3 fields: digest_text, digest, and schema name.
     ///
     /// # Returns
     ///
-    /// A string containing the query responsible for finding queries that are not cached in Readyset and are not in the mysql_query_rules table.
+    /// A string containing the query responsible for finding queries that are not cached in
+    /// Readyset and are not in the ProxySQL query stats table.
     fn query_builder(&self) -> String {
+        if self.database_type == DatabaseType::PostgreSQL {
+            todo!("PostgreSQL query discovery");
+        }
         let order_by = match self.query_discovery_mode {
             QueryDiscoveryMode::SumRowsSent => "s.sum_rows_sent".to_string(),
             QueryDiscoveryMode::SumTime => "s.sum_time".to_string(),
@@ -223,7 +234,8 @@ impl QueryDiscovery {
         }
     }
 
-    /// This function is used to find queries that are not cached in Readyset and are not in the mysql_query_rules table.
+    /// This function is used to find queries that are not cached in Readyset and are not in the
+    /// ProxySQL query rules table.
     ///
     /// # Arguments
     ///
@@ -231,7 +243,8 @@ impl QueryDiscovery {
     ///
     /// # Returns
     ///
-    /// A vector of queries that are not cached in Readyset and are not in the mysql_query_rules table.
+    /// A vector of queries that are not cached in Readyset and are not in the ProxySQL query rules
+    /// table.
     fn find_queries_to_cache(&self, proxysql: &mut ProxySQL) -> Vec<Query> {
         match self.query_discovery_mode {
             QueryDiscoveryMode::External => {
@@ -241,7 +254,7 @@ impl QueryDiscovery {
                 let conn = proxysql.get_connection();
                 let query = self.query_builder();
                 let rows: Vec<(String, String, String)> =
-                    conn.query(query).expect("Failed to find queries to cache");
+                    conn.query(&query).expect("Failed to find queries to cache");
                 rows.iter()
                     .map(|(digest_text, digest, schema)| {
                         Query::new(

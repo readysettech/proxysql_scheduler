@@ -39,6 +39,7 @@ SAVE SCHEDULER TO DISK;
 ```
 
 Configure `/etc/readyset_proxysql_scheduler.cnf` as follow:
+* `database_type` - (Optional) - Either `"mysql"` or `"postgresql"` (Default `"mysql"`)
 * `proxysql_user` - (Required) - ProxySQL admin user
 * `proxysql_password` - (Required) - ProxySQL admin password
 * `proxysql_host` - (Required) - ProxySQL admin host

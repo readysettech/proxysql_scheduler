@@ -1,7 +1,10 @@
-use crate::{config::Config, queries::Query};
+use crate::{
+    config::{Config, DatabaseType},
+    queries::Query,
+    sql_connection::SQLConnection,
+};
+use anyhow::{bail, Result};
 use core::fmt;
-use mysql::{prelude::Queryable, Conn, OptsBuilder};
-use std::time::Duration;
 
 /// Defines the possible status of a Readyset instance
 #[derive(PartialEq, Clone, Copy)]
@@ -82,11 +85,12 @@ impl From<String> for ReadysetStatus {
 
 /// Represents a Readyset instance
 pub struct Readyset {
+    database_type: DatabaseType,
     hostname: String,
     port: u16,
     proxysql_status: ProxySQLStatus,
     readyset_status: ReadysetStatus,
-    conn: Option<Conn>,
+    conn: Option<SQLConnection>,
 }
 
 impl Readyset {
@@ -106,21 +110,18 @@ impl Readyset {
     ///
     /// A new `Readyset` instance.
     pub fn new(hostname: String, port: u16, proxysql_status: String, config: &Config) -> Readyset {
-        let conn = match Conn::new(
-            OptsBuilder::new()
-                .ip_or_hostname(Some(hostname.clone()))
-                .tcp_port(port)
-                .user(Some(config.readyset_user.clone()))
-                .pass(Some(config.readyset_password.clone()))
-                .prefer_socket(false)
-                .read_timeout(Some(Duration::from_secs(5)))
-                .write_timeout(Some(Duration::from_secs(5)))
-                .tcp_connect_timeout(Some(Duration::from_secs(5))),
+        let conn = match SQLConnection::new(
+            config.database_type,
+            &hostname,
+            port,
+            &config.readyset_user,
+            &config.readyset_password,
         ) {
             Ok(conn) => conn,
             Err(err) => {
                 eprintln!("Failed to establish connection: {}", err);
                 return Readyset {
+                    database_type: config.database_type,
                     hostname,
                     port,
                     proxysql_status: ProxySQLStatus::from(proxysql_status),
@@ -131,6 +132,7 @@ impl Readyset {
         };
 
         Readyset {
+            database_type: config.database_type,
             hostname,
             port,
             proxysql_status: ProxySQLStatus::from(proxysql_status),
@@ -199,7 +201,7 @@ impl Readyset {
     /// # Returns
     ///
     /// true if the instance is ready, false otherwise.
-    pub fn check_readyset_is_ready(&mut self) -> Result<ProxySQLStatus, mysql::Error> {
+    pub fn check_readyset_is_ready(&mut self) -> Result<ProxySQLStatus> {
         match &mut self.conn {
             Some(conn) => {
                 let result = conn.query("SHOW READYSET STATUS");
@@ -222,16 +224,10 @@ impl Readyset {
                         self.readyset_status = ReadysetStatus::Unknown;
                         Ok(ProxySQLStatus::Shunned)
                     }
-                    Err(err) => Err(mysql::Error::IoError(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to execute query: {}", err),
-                    ))),
+                    Err(err) => bail!("Failed to execute query: {}", err),
                 }
             }
-            None => Err(mysql::Error::IoError(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Connection to Readyset instance is not established",
-            ))),
+            None => bail!("Connection to Readyset instance is not established"),
         }
     }
 
@@ -246,17 +242,16 @@ impl Readyset {
     /// # Returns
     ///
     /// true if the instance supports the query, false otherwise.
-    pub fn check_query_support(
-        &mut self,
-        digest_text: &String,
-        schema: &String,
-    ) -> Result<bool, mysql::Error> {
+    pub fn check_query_support(&mut self, digest_text: &String, schema: &String) -> Result<bool> {
+        if self.database_type == DatabaseType::PostgreSQL {
+            todo!("PostgreSQL Readyset query support check");
+        }
         match &mut self.conn {
             Some(conn) => {
-                conn.query_drop(format!("USE {}", schema))
+                conn.query_drop(&format!("USE {}", schema))
                     .expect("Failed to use schema");
                 let row: Option<(String, String, String)> =
-                    conn.query_first(format!("EXPLAIN CREATE CACHE FROM {}", digest_text))?;
+                    conn.query_first(&format!("EXPLAIN CREATE CACHE FROM {}", digest_text))?;
                 match row {
                     Some((_, _, value)) => Ok(value == "yes" || value == "cached"),
                     None => Ok(false),
@@ -272,17 +267,15 @@ impl Readyset {
     /// # Arguments
     ///
     /// * `query` - The query to cache.
-    pub fn cache_query(&mut self, query: &Query) -> Result<(), mysql::Error> {
+    pub fn cache_query(&mut self, query: &Query) -> Result<()> {
+        if self.database_type == DatabaseType::PostgreSQL {
+            todo!("PostgreSQL Readyset query caching");
+        }
         match &mut self.conn {
-            None => {
-                return Err(mysql::Error::IoError(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Connection to Readyset instance is not established",
-                )))
-            }
+            None => bail!("Connection to Readyset instance is not established"),
             Some(conn) => {
-                conn.query_drop(format!("USE {}", query.get_schema()))?;
-                conn.query_drop(format!(
+                conn.query_drop(&format!("USE {}", query.get_schema()))?;
+                conn.query_drop(&format!(
                     "CREATE CACHE d_{} FROM {}",
                     query.get_digest(),
                     query.get_digest_text()

@@ -3,6 +3,7 @@ mod messages;
 mod proxysql;
 mod queries;
 mod readyset;
+mod sql_connection;
 
 use clap::Parser;
 use config::{read_config_file, OperationMode};

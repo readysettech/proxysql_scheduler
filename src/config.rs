@@ -7,6 +7,14 @@ use std::{
 
 use crate::messages::MessageType;
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum DatabaseType {
+    #[default]
+    MySQL,
+    PostgreSQL,
+}
+
 #[derive(Deserialize, Clone, Copy, PartialEq, PartialOrd, Default, Debug)]
 pub enum OperationMode {
     HealthCheck,
@@ -61,6 +69,8 @@ fn default_number_of_queries() -> u16 {
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Config {
+    #[serde(default)]
+    pub database_type: DatabaseType,
     pub proxysql_user: String,
     pub proxysql_password: String,
     pub proxysql_host: String,
