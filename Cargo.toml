@@ -14,6 +14,9 @@ chrono = "0.4.35"
 file-guard = "0.2.0"
 once_cell = "1.10.0"
 anyhow = "1.0.97"
+postgres = "0.19.10"
+native-tls = "0.2.14"
+postgres-native-tls = "0.5.1"
 
 
 [package.metadata.generate-rpm]

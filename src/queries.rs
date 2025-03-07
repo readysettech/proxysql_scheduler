@@ -2,6 +2,7 @@ use crate::{
     config::{Config, DatabaseType, QueryDiscoveryMode},
     messages,
     proxysql::ProxySQL,
+    sql_connection::SQLRows,
 };
 
 pub struct Query {
@@ -254,7 +255,19 @@ impl QueryDiscovery {
                 let conn = proxysql.get_connection();
                 let query = self.query_builder();
                 let rows: Vec<(String, String, String)> =
-                    conn.query(&query).expect("Failed to find queries to cache");
+                    match conn.query(&query).expect("Failed to find queries to cache") {
+                        SQLRows::MySQL(rows) => rows,
+                        SQLRows::PostgreSQL(rows) => rows
+                            .into_iter()
+                            .filter_map(|row| {
+                                Some((
+                                    row.get(0)?.to_string(),
+                                    row.get(1)?.to_string(),
+                                    row.get(2)?.to_string(),
+                                ))
+                            })
+                            .collect(),
+                    };
                 rows.iter()
                     .map(|(digest_text, digest, schema)| {
                         Query::new(

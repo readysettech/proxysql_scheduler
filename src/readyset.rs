@@ -1,7 +1,7 @@
 use crate::{
     config::{Config, DatabaseType},
     queries::Query,
-    sql_connection::SQLConnection,
+    sql_connection::{SQLConnection, SQLRow, SQLRows},
 };
 use anyhow::{bail, Result};
 use core::fmt;
@@ -207,7 +207,15 @@ impl Readyset {
                 let result = conn.query("SHOW READYSET STATUS");
                 match result {
                     Ok(rows) => {
-                        let rows: Vec<(String, String)> = rows;
+                        let rows: Vec<(String, String)> = match rows {
+                            SQLRows::MySQL(rows) => rows,
+                            SQLRows::PostgreSQL(rows) => rows
+                                .into_iter()
+                                .filter_map(|row| {
+                                    Some((row.get(0)?.to_string(), row.get(1)?.to_string()))
+                                })
+                                .collect(),
+                        };
                         for (field, value) in rows {
                             if field == "Snapshot Status" && value == "Completed" {
                                 self.readyset_status = ReadysetStatus::Online;
@@ -250,8 +258,17 @@ impl Readyset {
             Some(conn) => {
                 conn.query_drop(&format!("USE {}", schema))
                     .expect("Failed to use schema");
-                let row: Option<(String, String, String)> =
-                    conn.query_first(&format!("EXPLAIN CREATE CACHE FROM {}", digest_text))?;
+                let row: Option<(String, String, String)> = match conn
+                    .query_first(&format!("EXPLAIN CREATE CACHE FROM {}", digest_text))?
+                {
+                    Some(SQLRow::MySQL(row)) => Some(row),
+                    Some(SQLRow::PostgreSQL(row)) => Some((
+                        row.get(0).unwrap_or("").to_string(),
+                        row.get(1).unwrap_or("").to_string(),
+                        row.get(2).unwrap_or("").to_string(),
+                    )),
+                    None => None,
+                };
                 match row {
                     Some((_, _, value)) => Ok(value == "yes" || value == "cached"),
                     None => Ok(false),

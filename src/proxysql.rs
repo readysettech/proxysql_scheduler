@@ -5,7 +5,7 @@ use crate::{
     messages,
     queries::Query,
     readyset::{ProxySQLStatus, Readyset},
-    sql_connection::SQLConnection,
+    sql_connection::{SQLConnection, SQLRows},
 };
 
 const MIRROR_QUERY_TOKEN: &str = "Mirror by readyset scheduler at";
@@ -20,6 +20,21 @@ pub struct ProxySQL {
     dry_run: bool,
 }
 
+fn mysql_pgsql(database_type: DatabaseType) -> &'static str {
+    match database_type {
+        DatabaseType::MySQL => "mysql",
+        DatabaseType::PostgreSQL => "pgsql",
+    }
+}
+
+#[allow(nonstandard_style)]
+fn MYSQL_PGSQL(database_type: DatabaseType) -> &'static str {
+    match database_type {
+        DatabaseType::MySQL => "MYSQL",
+        DatabaseType::PostgreSQL => "PGSQL",
+    }
+}
+
 impl ProxySQL {
     /// This function is used to create a new ProxySQL struct.
     ///
@@ -32,22 +47,36 @@ impl ProxySQL {
     ///
     /// A new ProxySQL struct.
     pub fn new(config: &Config, dry_run: bool) -> Self {
-        let mut conn = SQLConnection::new(
+        let mut conn = match SQLConnection::new(
             config.database_type,
             &config.proxysql_host,
             config.proxysql_port,
             &config.proxysql_user,
             &config.proxysql_password,
-        )
-        .expect("Failed to create ProxySQL connection");
-        if config.database_type == DatabaseType::PostgreSQL {
-            todo!("PostgreSQL ProxySQL server management");
-        }
+        ) {
+            Ok(conn) => conn,
+            Err(err) => panic!("Failed to create ProxySQL connection: {err}"),
+        };
         let query = &format!(
-            "SELECT hostname, port, status, comment FROM mysql_servers WHERE hostgroup_id = {} AND status IN ('ONLINE', 'SHUNNED', 'OFFLINE_SOFT')",
+            "SELECT hostname, port, status, comment FROM {}_servers WHERE hostgroup_id = {} AND status IN ('ONLINE', 'SHUNNED', 'OFFLINE_SOFT')",
+            mysql_pgsql(config.database_type),
             config.readyset_hostgroup
         );
-        let results: Vec<(String, u16, String, String)> = conn.query(query).unwrap();
+        let results: Vec<(String, u16, String, String)> = match conn.query(query) {
+            Ok(SQLRows::MySQL(rows)) => rows,
+            Ok(SQLRows::PostgreSQL(rows)) => rows
+                .iter()
+                .map(|row| {
+                    (
+                        row.get(0).unwrap().to_string(),
+                        row.get(1).unwrap().parse().unwrap(),
+                        row.get(2).unwrap().to_string(),
+                        row.get(3).unwrap().to_string(),
+                    )
+                })
+                .collect(),
+            Err(err) => panic!("Failed to run query: {err}"),
+        };
         let readysets = results
             .into_iter()
             .filter_map(|(hostname, port, status, comment)| {
@@ -86,33 +115,40 @@ impl ProxySQL {
     pub fn add_as_query_rule(&mut self, query: &Query) {
         let datetime_now: DateTime<Local> = Local::now();
         let date_formatted = datetime_now.format("%Y-%m-%d %H:%M:%S");
-        if self.database_type == DatabaseType::PostgreSQL {
-            todo!("PostgreSQL ProxySQL query rule management");
-        }
-        if self.warmup_time_s > 0 {
-            self.conn.query_drop(&format!("INSERT INTO mysql_query_rules (username, mirror_hostgroup, active, digest, apply, comment) VALUES ('{}', {}, 1, '{}', 1, '{}: {}')", query.get_user(), self.readyset_hostgroup, query.get_digest(), MIRROR_QUERY_TOKEN, date_formatted)).expect("Failed to insert into mysql_query_rules");
-            messages::print_note("Inserted warm-up rule");
+        let (hostgroup_col, token, rule) = if self.warmup_time_s > 0 {
+            ("mirror_hostgroup", MIRROR_QUERY_TOKEN, "warm-up")
         } else {
-            self.conn.query_drop(&format!("INSERT INTO mysql_query_rules (username, destination_hostgroup, active, digest, apply, comment) VALUES ('{}', {}, 1, '{}', 1, '{}: {}')", query.get_user(), self.readyset_hostgroup, query.get_digest(), DESTINATION_QUERY_TOKEN, date_formatted)).expect("Failed to insert into mysql_query_rules");
-            messages::print_note("Inserted destination rule");
-        }
+            (
+                "destination_hostgroup",
+                DESTINATION_QUERY_TOKEN,
+                "destination",
+            )
+        };
+        self.conn.query_drop(&format!(
+            "INSERT INTO {}_query_rules (username, {hostgroup_col}, active, digest, apply, comment) VALUES ('{}', {}, 1, '{}', 1, '{token}: {date_formatted}')",
+            mysql_pgsql(self.database_type),
+            query.get_user(),
+            self.readyset_hostgroup,
+            query.get_digest()
+        )).expect("Failed to add query rule");
+        messages::print_note(&format!("Inserted {rule} rule"));
     }
 
     pub fn load_query_rules(&mut self) {
-        if self.database_type == DatabaseType::PostgreSQL {
-            todo!("PostgreSQL ProxySQL query rule loading");
-        }
         self.conn
-            .query_drop("LOAD MYSQL QUERY RULES TO RUNTIME")
+            .query_drop(&format!(
+                "LOAD {} QUERY RULES TO RUNTIME",
+                MYSQL_PGSQL(self.database_type)
+            ))
             .expect("Failed to load query rules");
     }
 
     pub fn save_query_rules(&mut self) {
-        if self.database_type == DatabaseType::PostgreSQL {
-            todo!("PostgreSQL ProxySQL query rule saving");
-        }
         self.conn
-            .query_drop("SAVE MYSQL QUERY RULES TO DISK")
+            .query_drop(&format!(
+                "SAVE {} QUERY RULES TO DISK",
+                MYSQL_PGSQL(self.database_type)
+            ))
             .expect("Failed to save query rules");
     }
 
@@ -123,32 +159,30 @@ impl ProxySQL {
         port: u16,
         new_status: ProxySQLStatus,
     ) {
-        if self.database_type == DatabaseType::PostgreSQL {
-            todo!("PostgreSQL ProxySQL server updating");
-        }
         self.conn
             .query_drop(&format!(
-                "UPDATE mysql_servers SET status = '{new_status}'
-                 WHERE hostgroup_id = {hostgroup} AND hostname = '{hostname}' AND port = {port}"
+                "UPDATE {}_servers SET status = '{new_status}'
+                 WHERE hostgroup_id = {hostgroup} AND hostname = '{hostname}' AND port = {port}",
+                mysql_pgsql(self.database_type)
             ))
             .expect("Failed to update servers");
     }
 
     pub fn load_servers(&mut self) {
-        if self.database_type == DatabaseType::PostgreSQL {
-            todo!("PostgreSQL ProxySQL server loading");
-        }
         self.conn
-            .query_drop("LOAD MYSQL SERVERS TO RUNTIME")
+            .query_drop(&format!(
+                "LOAD {} SERVERS TO RUNTIME",
+                MYSQL_PGSQL(self.database_type)
+            ))
             .expect("Failed to load servers");
     }
 
     pub fn save_servers(&mut self) {
-        if self.database_type == DatabaseType::PostgreSQL {
-            todo!("PostgreSQL ProxySQL server saving");
-        }
         self.conn
-            .query_drop("SAVE MYSQL SERVERS TO DISK")
+            .query_drop(&format!(
+                "SAVE {} SERVERS TO DISK",
+                MYSQL_PGSQL(self.database_type)
+            ))
             .expect("Failed to save servers");
     }
 
@@ -157,15 +191,16 @@ impl ProxySQL {
     /// # Returns
     /// A vector of tuples containing the digest_text, digest, and schemaname of the queries that are currently routed to Readyset.
     pub fn find_queries_routed_to_readyset(&mut self) -> Vec<String> {
-        if self.database_type == DatabaseType::PostgreSQL {
-            todo!("PostgreSQL ProxySQL query rule detection");
-        }
-        let rows: Vec<String> = self
+        let rows: Vec<String> = match self
             .conn
             .query(&format!(
-                "SELECT digest FROM mysql_query_rules WHERE comment LIKE '{MIRROR_QUERY_TOKEN}%' OR comment LIKE '{DESTINATION_QUERY_TOKEN}%'"
+                "SELECT digest FROM {}_query_rules WHERE comment LIKE '{MIRROR_QUERY_TOKEN}%' OR comment LIKE '{DESTINATION_QUERY_TOKEN}%'",
+                mysql_pgsql(self.database_type)
             ))
-            .expect("Failed to find queries routed to Readyset");
+            .expect("Failed to find queries routed to Readyset") {
+                SQLRows::MySQL(rows) => rows,
+                SQLRows::PostgreSQL(rows) => rows.iter().map(|r| r.get(0).unwrap().to_string()).collect(),
+            };
         rows
     }
 
@@ -179,10 +214,15 @@ impl ProxySQL {
         let datetime_now: DateTime<Local> = Local::now();
         let tz = datetime_now.format("%z").to_string();
         let date_formatted = datetime_now.format("%Y-%m-%d %H:%M:%S");
-        if self.database_type == DatabaseType::PostgreSQL {
-            todo!("PostgreSQL ProxySQL query rule updating");
-        }
-        let rows: Vec<(u16, String)> = self.conn.query(&format!("SELECT rule_id, comment FROM mysql_query_rules WHERE comment LIKE '{MIRROR_QUERY_TOKEN}: ____-__-__ __:__:__';")).expect("Failed to select mirror rules");
+        let rows: Vec<(u16, String)> = match self.conn.query(&format!(
+            "SELECT rule_id, comment FROM {}_query_rules WHERE comment LIKE '{MIRROR_QUERY_TOKEN}: ____-__-__ __:__:__';",
+            mysql_pgsql(self.database_type)
+        )).expect("Failed to select mirror rules") {
+            SQLRows::MySQL(rows) => rows,
+            SQLRows::PostgreSQL(rows) => rows.iter().map(|r| (
+                r.get(0).unwrap().parse().unwrap(), r.get(1).unwrap().to_string()
+            )).collect(),
+        };
         for (rule_id, comment) in rows {
             let datetime_mirror_str = comment
                 .split(&format!("{MIRROR_QUERY_TOKEN}:"))
@@ -200,7 +240,13 @@ impl ProxySQL {
                 .num_seconds();
             if elapsed > self.warmup_time_s as i64 {
                 let comment = format!("{comment}\n {DESTINATION_QUERY_TOKEN}: {date_formatted}");
-                self.conn.query_drop(&format!("UPDATE mysql_query_rules SET mirror_hostgroup = NULL, destination_hostgroup = {}, comment = '{}' WHERE rule_id = {}", self.readyset_hostgroup, comment, rule_id)).expect("Failed to update rule");
+                self.conn.query_drop(&format!(
+                    "UPDATE {}_query_rules SET mirror_hostgroup = NULL, destination_hostgroup = {}, comment = '{}' WHERE rule_id = {}",
+                    mysql_pgsql(self.database_type),
+                    self.readyset_hostgroup,
+                    comment,
+                    rule_id
+                )).expect("Failed to update rule");
                 messages::print_note(
                     format!("Updated rule ID {} from warmup to destination", rule_id).as_str(),
                 );
