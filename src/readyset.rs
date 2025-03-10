@@ -116,6 +116,7 @@ impl Readyset {
             port,
             &config.readyset_user,
             &config.readyset_password,
+            config.readyset_database.as_deref(),
         ) {
             Ok(conn) => conn,
             Err(err) => {

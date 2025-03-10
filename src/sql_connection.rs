@@ -35,6 +35,7 @@ impl SQLConnection {
         port: u16,
         user: &str,
         pass: &str,
+        database: Option<&str>,
     ) -> Result<Self> {
         Ok(match database_type {
             DatabaseType::MySQL => Self::MySQL(Conn::new(
@@ -43,25 +44,31 @@ impl SQLConnection {
                     .tcp_port(port)
                     .user(Some(user))
                     .pass(Some(pass))
+                    .db_name(database)
                     .prefer_socket(false)
                     .read_timeout(Some(TIMEOUT))
                     .write_timeout(Some(TIMEOUT))
                     .tcp_connect_timeout(Some(TIMEOUT)),
             )?),
-            DatabaseType::PostgreSQL => Self::PostgreSQL(
-                Config::new()
-                    .host(hostname)
-                    .port(port)
-                    .user(user)
-                    .password(pass)
-                    .connect_timeout(TIMEOUT)
-                    .tcp_user_timeout(TIMEOUT)
-                    .connect(MakeTlsConnector::new(
+            DatabaseType::PostgreSQL => {
+                let mut config = Config::new();
+                config.host(hostname);
+                config.port(port);
+                config.user(user);
+                config.password(pass);
+                if let Some(database) = database {
+                    config.dbname(database);
+                }
+                config.connect_timeout(TIMEOUT);
+                config.tcp_user_timeout(TIMEOUT);
+                Self::PostgreSQL(
+                    config.connect(MakeTlsConnector::new(
                         TlsConnector::builder()
                             .danger_accept_invalid_certs(true)
                             .build()?,
                     ))?,
-            ),
+                )
+            }
         })
     }
 

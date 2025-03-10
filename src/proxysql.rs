@@ -53,6 +53,7 @@ impl ProxySQL {
             config.proxysql_port,
             &config.proxysql_user,
             &config.proxysql_password,
+            None,
         ) {
             Ok(conn) => conn,
             Err(err) => panic!("Failed to create ProxySQL connection: {err}"),

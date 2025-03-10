@@ -77,6 +77,7 @@ pub struct Config {
     pub proxysql_port: u16,
     pub readyset_user: String,
     pub readyset_password: String,
+    pub readyset_database: Option<String>,
     pub source_hostgroup: u16,
     pub readyset_hostgroup: u16,
     #[serde(default)]

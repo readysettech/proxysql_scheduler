@@ -46,6 +46,7 @@ Configure `/etc/readyset_proxysql_scheduler.cnf` as follow:
 * `proxysql_port` - (Required) - ProxySQL admin port
 * `readyset_user` - (Required) - Readyset application user
 * `readyset_password` - (Required) - Readyset application password
+* `readyset_database` - (Optional) - Readyset application database
 * `source_hostgroup` - (Required) - Hostgroup running your Read workload
 * `readyset_hostgroup` - (Required) - Hostgroup where Readyset is configure
 * `warmup_time_s` - (Optional) - Time in seconds to mirror a query supported before redirecting the query to Readyset (Default `0` - no mirror)
