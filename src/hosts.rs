@@ -221,14 +221,13 @@ impl Host {
                         self.readyset_status = ReadysetStatus::Unknown;
                         Ok(ProxyStatus::Shunned)
                     }
-                    Err(err) => Err(mysql::Error::IoError(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to execute query: {}", err),
-                    ))),
+                    Err(err) => Err(mysql::Error::IoError(std::io::Error::other(format!(
+                        "Failed to execute query: {}",
+                        err
+                    )))),
                 }
             }
-            None => Err(mysql::Error::IoError(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            None => Err(mysql::Error::IoError(std::io::Error::other(
                 "Connection to Readyset host is not established",
             ))),
         }
@@ -278,8 +277,7 @@ impl Host {
     pub fn cache_query(&mut self, query: &Query) -> Result<bool, mysql::Error> {
         match &mut self.conn {
             None => {
-                return Err(mysql::Error::IoError(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                return Err(mysql::Error::IoError(std::io::Error::other(
                     "Connection to Readyset host is not established",
                 )))
             }
