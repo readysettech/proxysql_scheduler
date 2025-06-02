@@ -4,20 +4,13 @@ on: [push, pull_request]
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
-
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
   
     - name: Install pre-requirements
       run: sudo curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -q -y
-
-    - name: Get OpenSSL Version
-      run: echo "openssl_version=$(openssl version | awk '{print $2}')" >> "$GITHUB_ENV"
-
+    
     - name: Check format
       run: cargo fmt --check 
 
@@ -48,13 +41,13 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         path: target/generate-rpm/
-        name: rpm-openssl-${{ env.openssl_version }}-${{ env.rpm_name }}
+        name: ${{ env.rpm_name }}
 
-    - name: Upload DEB
+    - name: Upload Deb
       uses: actions/upload-artifact@v4
       with:
         path: target/debian/${{ env.deb_name }}
-        name: deb-openssl-${{ env.openssl_version }}-${{ env.deb_name }}
+        name: ${{ env.deb_name }}
 
   release:
     if: contains(github.ref, 'tags/v')
@@ -67,12 +60,10 @@ jobs:
       with:
         path: ./
         merge-multiple: true
-
     - name: List Files
       run: |
         pwd
         ls -lah ./
-
     - name: Create Release
       id: create_release
       uses: ncipollo/release-action@v1
@@ -84,5 +75,5 @@ jobs:
         allowUpdates: true
         artifactErrorsFailBuild: false
         artifacts: |
-          rpm-openssl-*.rpm
-          deb-openssl-*.deb
+          *.rpm
+          *.deb
